@@ -1,14 +1,14 @@
 use crate::quad::TripleLayerQuadAllocator;
 use crate::termwindow::render::RenderScreenLineParams;
 use crate::utilsprites::RenderMetrics;
-use config::ConfigHandle;
+use config::{ConfigHandle, TabBarPosition};
 use mux::renderable::RenderableDimensions;
 use wezterm_term::color::ColorAttribute;
 use window::color::LinearRgba;
 
 impl crate::TermWindow {
     pub fn paint_tab_bar(&mut self, layers: &mut TripleLayerQuadAllocator) -> anyhow::Result<()> {
-        if self.config.use_fancy_tab_bar {
+        if self.config.effective_use_fancy_tab_bar() {
             if self.fancy_tab_bar.is_none() {
                 let palette = self.palette().clone();
                 let tab_bar = self.build_fancy_tab_bar(&palette)?;
@@ -23,7 +23,7 @@ impl crate::TermWindow {
 
         let palette = self.palette().clone();
         let tab_bar_height = self.tab_bar_pixel_height()?;
-        let tab_bar_y = if self.config.tab_bar_at_bottom {
+        let tab_bar_y = if self.config.resolved_tab_bar_position().is_bottom() {
             ((self.dimensions.pixel_height as f32) - (tab_bar_height + border.bottom.get() as f32))
                 .max(0.)
         } else {
@@ -105,7 +105,7 @@ impl crate::TermWindow {
         fontconfig: &wezterm_font::FontConfiguration,
         render_metrics: &RenderMetrics,
     ) -> anyhow::Result<f32> {
-        if config.use_fancy_tab_bar {
+        if config.effective_use_fancy_tab_bar() {
             let font = fontconfig.title_font()?;
             Ok((font.metrics().cell_height.get() as f32 * 1.75).ceil())
         } else {
@@ -115,5 +115,40 @@ impl crate::TermWindow {
 
     pub fn tab_bar_pixel_height(&self) -> anyhow::Result<f32> {
         Self::tab_bar_pixel_height_impl(&self.config, &self.fonts, &self.render_metrics)
+    }
+
+    pub fn tab_bar_pixel_width_impl(
+        config: &ConfigHandle,
+        fontconfig: &wezterm_font::FontConfiguration,
+    ) -> anyhow::Result<f32> {
+        if !config.resolved_tab_bar_position().is_vertical() {
+            return Ok(0.);
+        }
+
+        let font = fontconfig.title_font()?;
+        let metrics = RenderMetrics::with_font_metrics(&font.metrics());
+        let extra_cells = if config.show_close_tab_button_in_tabs {
+            4.5
+        } else {
+            3.5
+        };
+        Ok(((config.tab_max_width as f32 + extra_cells) * metrics.cell_size.width as f32).ceil())
+    }
+
+    pub fn tab_bar_pixel_width(&self) -> anyhow::Result<f32> {
+        Self::tab_bar_pixel_width_impl(&self.config, &self.fonts)
+    }
+
+    pub fn tab_bar_pixel_offsets(&self) -> anyhow::Result<(f32, f32, f32, f32)> {
+        if !self.show_tab_bar {
+            return Ok((0., 0., 0., 0.));
+        }
+
+        Ok(match self.config.resolved_tab_bar_position() {
+            TabBarPosition::Top => (0., self.tab_bar_pixel_height()?, 0., 0.),
+            TabBarPosition::Bottom => (0., 0., 0., self.tab_bar_pixel_height()?),
+            TabBarPosition::Left => (self.tab_bar_pixel_width()?, 0., 0., 0.),
+            TabBarPosition::Right => (0., 0., self.tab_bar_pixel_width()?, 0.),
+        })
     }
 }

@@ -12,3 +12,5 @@ a native style with proportional fonts.
 When set to `false`, the tab bar is rendered using a retro
 aesthetic using the main terminal font.
 
+When using `tab_bar_position = "Left"` or `"Right"`, the fancy tab bar layout
+is used regardless of this setting.

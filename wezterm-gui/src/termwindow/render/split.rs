@@ -17,16 +17,16 @@ impl crate::TermWindow {
         let cell_height = self.render_metrics.cell_size.height as f32;
 
         let border = self.get_os_border();
-        let first_row_offset = if self.show_tab_bar && !self.config.tab_bar_at_bottom {
-            self.tab_bar_pixel_height()?
-        } else {
-            0.
-        } + border.top.get() as f32;
+        let (left_bar_width, top_bar_height, _, _) = self.tab_bar_pixel_offsets()?;
+        let first_row_offset = top_bar_height + border.top.get() as f32;
 
         let (padding_left, padding_top) = self.padding_left_top();
 
         let pos_y = split.top as f32 * cell_height + first_row_offset + padding_top;
-        let pos_x = split.left as f32 * cell_width + padding_left + border.left.get() as f32;
+        let pos_x = split.left as f32 * cell_width
+            + left_bar_width
+            + padding_left
+            + border.left.get() as f32;
 
         if split.direction == SplitDirection::Horizontal {
             self.filled_rectangle(
@@ -42,6 +42,7 @@ impl crate::TermWindow {
             )?;
             self.ui_items.push(UIItem {
                 x: border.left.get() as usize
+                    + left_bar_width as usize
                     + padding_left as usize
                     + (split.left * cell_width as usize),
                 width: cell_width as usize,
@@ -65,6 +66,7 @@ impl crate::TermWindow {
             )?;
             self.ui_items.push(UIItem {
                 x: border.left.get() as usize
+                    + left_bar_width as usize
                     + padding_left as usize
                     + (split.left * cell_width as usize),
                 width: split.size * cell_width as usize,

@@ -375,7 +375,7 @@ impl crate::TermWindow {
             - self.terminal_size.pixel_height as f32
             - padding_top
             - padding_bottom
-            - if self.show_tab_bar {
+            - if self.show_tab_bar && !self.config.resolved_tab_bar_position().is_vertical() {
                 self.tab_bar_pixel_height().unwrap_or(0.)
             } else {
                 0.

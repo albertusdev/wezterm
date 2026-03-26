@@ -11,3 +11,5 @@ the window rather than the top of the window.
 
 The default is `false`.
 
+This option remains supported for compatibility. Prefer
+[tab_bar_position](tab_bar_position.md) for new configurations.

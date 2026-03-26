@@ -474,6 +474,9 @@ pub struct Config {
     pub use_fancy_tab_bar: bool,
 
     #[dynamic(default)]
+    pub tab_bar_position: Option<TabBarPosition>,
+
+    #[dynamic(default)]
     pub tab_bar_at_bottom: bool,
 
     #[dynamic(default = "default_true")]
@@ -936,6 +939,20 @@ impl Config {
         } else {
             WslDomain::default_domains()
         }
+    }
+
+    pub fn resolved_tab_bar_position(&self) -> TabBarPosition {
+        self.tab_bar_position.unwrap_or_else(|| {
+            if self.tab_bar_at_bottom {
+                TabBarPosition::Bottom
+            } else {
+                TabBarPosition::Top
+            }
+        })
+    }
+
+    pub fn effective_use_fancy_tab_bar(&self) -> bool {
+        self.use_fancy_tab_bar || self.resolved_tab_bar_position().is_vertical()
     }
 
     pub fn update_ulimit(&self) -> anyhow::Result<()> {
@@ -1912,6 +1929,29 @@ impl DefaultCursorStyle {
             },
             _ => shape,
         }
+    }
+}
+
+#[derive(Debug, FromDynamic, ToDynamic, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TabBarPosition {
+    #[default]
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl TabBarPosition {
+    pub fn is_vertical(self) -> bool {
+        matches!(self, Self::Left | Self::Right)
+    }
+
+    pub fn is_bottom(self) -> bool {
+        matches!(self, Self::Bottom)
+    }
+
+    pub fn is_left(self) -> bool {
+        matches!(self, Self::Left)
     }
 }
 

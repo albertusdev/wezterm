@@ -68,12 +68,9 @@ impl super::TermWindow {
         self.current_mouse_event.replace(event.clone());
 
         let border = self.get_os_border();
-
-        let first_line_offset = if self.show_tab_bar && !self.config.tab_bar_at_bottom {
-            self.tab_bar_pixel_height().unwrap_or(0.) as isize
-        } else {
-            0
-        } + border.top.get() as isize;
+        let (tab_bar_left, tab_bar_top, _, _) =
+            self.tab_bar_pixel_offsets().unwrap_or((0., 0., 0., 0.));
+        let first_line_offset = tab_bar_top as isize + border.top.get() as isize;
 
         let (padding_left, padding_top) = self.padding_left_top();
 
@@ -88,7 +85,7 @@ impl super::TermWindow {
         let x = (event
             .coords
             .x
-            .sub((padding_left + border.left.get() as f32) as isize)
+            .sub((padding_left + tab_bar_left + border.left.get() as f32) as isize)
             .max(0) as f32)
             / self.render_metrics.cell_size.width as f32;
         let x = if !pane.is_mouse_grabbed() {
@@ -112,7 +109,7 @@ impl super::TermWindow {
         let mut x_pixel_offset = event
             .coords
             .x
-            .sub((padding_left + border.left.get() as f32) as isize);
+            .sub((padding_left + tab_bar_left + border.left.get() as f32) as isize);
         if x > 0 {
             x_pixel_offset = x_pixel_offset.max(0) % self.render_metrics.cell_size.width;
         }
@@ -295,16 +292,8 @@ impl super::TermWindow {
         let dims = pane.get_dimensions();
         let current_viewport = self.get_viewport(pane.pane_id());
 
-        let tab_bar_height = if self.show_tab_bar {
-            self.tab_bar_pixel_height().unwrap_or(0.)
-        } else {
-            0.
-        };
-        let (top_bar_height, bottom_bar_height) = if self.config.tab_bar_at_bottom {
-            (0.0, tab_bar_height)
-        } else {
-            (tab_bar_height, 0.0)
-        };
+        let (_, top_bar_height, _, bottom_bar_height) =
+            self.tab_bar_pixel_offsets().unwrap_or((0., 0., 0., 0.));
 
         let border = self.get_os_border();
         let y_offset = top_bar_height + border.top.get() as f32;

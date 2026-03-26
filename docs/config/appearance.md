@@ -279,8 +279,10 @@ details.
   whether the tab bar is used at all.
 * [hide_tab_bar_if_only_one_tab](lua/config/hide_tab_bar_if_only_one_tab.md) option
   causes the tab bar to be hidden when there is only a single tab.
+* [tab_bar_position](lua/config/tab_bar_position.md) controls whether the tab
+  bar is rendered at the top, bottom, left, or right of the window.
 * [tab_bar_at_bottom](lua/config/tab_bar_at_bottom.md) places the tab
-  bar at the bottom of the window instead of the top
+  bar at the bottom of the window instead of the top.
 * [tab_max_width](lua/config/tab_max_width.md) sets the maximum width, measured in cells,
   of a given tab when using retro tab mode.
 
@@ -548,4 +550,3 @@ through to `1.0` (completely opaque).
 ```lua
 config.text_background_opacity = 0.3
 ```
-
