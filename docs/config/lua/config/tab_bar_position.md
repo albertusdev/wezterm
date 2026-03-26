@@ -30,3 +30,5 @@ return config
 is the preferred configuration surface going forward.
 
 Left and right tab bars are rendered using the fancy tab bar layout.
+They also honor [tab_bar_width](tab_bar_width.md), and can be resized with the
+mouse by dragging the rail edge in the GUI.

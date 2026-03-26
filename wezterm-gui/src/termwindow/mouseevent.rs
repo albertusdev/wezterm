@@ -7,6 +7,7 @@ use ::window::{
     WindowDecorations, WindowOps, WindowState,
 };
 use config::keyassignment::{KeyAssignment, MouseEventTrigger, SpawnTabDomain};
+use config::Dimension;
 use config::MouseEventAltScreen;
 use mux::pane::{Pane, WithPaneLines};
 use mux::tab::SplitDirection;
@@ -19,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use termwiz::hyperlink::Hyperlink;
 use termwiz::surface::Line;
-use wezterm_dynamic::ToDynamic;
+use wezterm_dynamic::{Object, ToDynamic, Value};
 use wezterm_term::input::{MouseButton, MouseEventKind as TMEK};
 use wezterm_term::{ClickPosition, LastMouseClick, StableRowIndex};
 
@@ -39,7 +40,8 @@ impl super::TermWindow {
             UIItemType::TabBar(_) => {
                 self.update_title_post_status();
             }
-            UIItemType::CloseTab(_)
+            UIItemType::TabBarResizeHandle
+            | UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
@@ -50,7 +52,8 @@ impl super::TermWindow {
     fn enter_ui_item(&mut self, item: &UIItem) {
         match item.item_type {
             UIItemType::TabBar(_) => {}
-            UIItemType::CloseTab(_)
+            UIItemType::TabBarResizeHandle
+            | UIItemType::CloseTab(_)
             | UIItemType::AboveScrollThumb
             | UIItemType::BelowScrollThumb
             | UIItemType::ScrollThumb
@@ -321,6 +324,60 @@ impl super::TermWindow {
         self.dragging.replace((item, start_event));
     }
 
+    fn tab_bar_width_limits(&self) -> (f32, f32) {
+        let min = (self.render_metrics.cell_size.width as f32 * 10.0).ceil();
+        let max = (self.dimensions.pixel_width as f32 * 0.45).max(min);
+        (min, max)
+    }
+
+    fn apply_vertical_tab_bar_width_override(&mut self, width: f32) {
+        let (min, max) = self.tab_bar_width_limits();
+        let width = width.clamp(min, max).floor();
+
+        let mut overrides = match self.config_overrides.clone() {
+            Value::Object(obj) => obj,
+            Value::Null => Object::default(),
+            other => {
+                log::warn!(
+                    "replacing non-object config overrides while resizing tab bar: {:?}",
+                    other
+                );
+                Object::default()
+            }
+        };
+        overrides.insert(
+            "tab_bar_width".to_dynamic(),
+            Dimension::Pixels(width).to_dynamic(),
+        );
+        let value = Value::Object(overrides);
+        if value != self.config_overrides {
+            self.config_overrides = value;
+            self.config_was_reloaded();
+        }
+    }
+
+    fn drag_tab_bar_resize_handle(
+        &mut self,
+        item: UIItem,
+        start_event: MouseEvent,
+        event: MouseEvent,
+        context: &dyn WindowOps,
+    ) {
+        let border = self.get_os_border();
+        let width = match self.config.resolved_tab_bar_position() {
+            config::TabBarPosition::Left => event.coords.x as f32 - border.left.get() as f32,
+            config::TabBarPosition::Right => {
+                self.dimensions.pixel_width as f32
+                    - border.right.get() as f32
+                    - event.coords.x as f32
+            }
+            _ => return,
+        };
+        self.apply_vertical_tab_bar_width_override(width);
+        context.invalidate();
+        self.dragging.replace((item, start_event));
+    }
+
     fn drag_ui_item(
         &mut self,
         item: UIItem,
@@ -334,12 +391,27 @@ impl super::TermWindow {
             UIItemType::Split(split) => {
                 self.drag_split(item, split, start_event, x, y, context);
             }
+            UIItemType::TabBarResizeHandle => {
+                self.drag_tab_bar_resize_handle(item, start_event, event, context);
+            }
             UIItemType::ScrollThumb => {
                 self.drag_scroll_thumb(item, start_event, event, context);
             }
             _ => {
                 log::error!("drag not implemented for {:?}", item);
             }
+        }
+    }
+
+    fn mouse_event_tab_bar_resize_handle(
+        &mut self,
+        item: UIItem,
+        event: MouseEvent,
+        context: &dyn WindowOps,
+    ) {
+        context.set_cursor(Some(MouseCursor::SizeLeftRight));
+        if event.kind == WMEK::Press(MousePress::Left) {
+            self.dragging.replace((item, event));
         }
     }
 
@@ -355,6 +427,9 @@ impl super::TermWindow {
         match item.item_type {
             UIItemType::TabBar(item) => {
                 self.mouse_event_tab_bar(item, event, context);
+            }
+            UIItemType::TabBarResizeHandle => {
+                self.mouse_event_tab_bar_resize_handle(item, event, context);
             }
             UIItemType::AboveScrollThumb => {
                 self.mouse_event_above_scroll_thumb(item, pane, event, context);

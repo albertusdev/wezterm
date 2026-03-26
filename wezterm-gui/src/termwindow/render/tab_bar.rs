@@ -120,6 +120,8 @@ impl crate::TermWindow {
     pub fn tab_bar_pixel_width_impl(
         config: &ConfigHandle,
         fontconfig: &wezterm_font::FontConfiguration,
+        dpi: f32,
+        window_pixel_width: f32,
     ) -> anyhow::Result<f32> {
         if !config.resolved_tab_bar_position().is_vertical() {
             return Ok(0.);
@@ -127,6 +129,13 @@ impl crate::TermWindow {
 
         let font = fontconfig.title_font()?;
         let metrics = RenderMetrics::with_font_metrics(&font.metrics());
+        if let Some(width) = config.tab_bar_width {
+            return Ok(width.evaluate_as_pixels(config::DimensionContext {
+                dpi,
+                pixel_max: window_pixel_width,
+                pixel_cell: metrics.cell_size.width as f32,
+            }));
+        }
         let extra_cells = if config.show_close_tab_button_in_tabs {
             4.5
         } else {
@@ -136,7 +145,12 @@ impl crate::TermWindow {
     }
 
     pub fn tab_bar_pixel_width(&self) -> anyhow::Result<f32> {
-        Self::tab_bar_pixel_width_impl(&self.config, &self.fonts)
+        Self::tab_bar_pixel_width_impl(
+            &self.config,
+            &self.fonts,
+            self.dimensions.dpi as f32,
+            self.dimensions.pixel_width as f32,
+        )
     }
 
     pub fn tab_bar_pixel_offsets(&self) -> anyhow::Result<(f32, f32, f32, f32)> {

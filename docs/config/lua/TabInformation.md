@@ -16,4 +16,7 @@ The `TabInformation` struct contains the following fields:
 * `window_title` - the title of the window that contains this tab {{since('20220807-113146-c2fee766', inline=True)}}
 * `tab_title` - the title of the tab {{since('20220807-113146-c2fee766', inline=True)}}
 * `metadata` - a table of string metadata associated with the tab
-
+* `badge` - the tab badge text, if any {{since('nightly', inline=True)}}
+* `badge_color` - the optional badge background color {{since('nightly', inline=True)}}
+* `notification` - the tab notification text, if any {{since('nightly', inline=True)}}
+* `notification_color` - the optional notification background color {{since('nightly', inline=True)}}

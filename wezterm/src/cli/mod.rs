@@ -7,7 +7,9 @@ mod activate_pane;
 mod activate_pane_direction;
 mod activate_tab;
 mod adjust_pane_size;
+mod clear_tab_badge;
 mod clear_tab_metadata;
+mod clear_tab_notification;
 mod get_pane_direction;
 mod get_text;
 mod kill_pane;
@@ -17,7 +19,9 @@ mod move_pane_to_new_tab;
 mod proxy;
 mod rename_workspace;
 mod send_text;
+mod set_tab_badge;
 mod set_tab_metadata;
+mod set_tab_notification;
 mod set_tab_title;
 mod set_window_title;
 mod spawn_command;
@@ -163,6 +167,22 @@ Outputs the pane-id for the newly created pane on success"
     #[command(name = "clear-tab-metadata", rename_all = "kebab")]
     ClearTabMetadata(clear_tab_metadata::ClearTabMetadata),
 
+    /// Set a badge on a tab using the metadata-backed badge API
+    #[command(name = "set-tab-badge", rename_all = "kebab")]
+    SetTabBadge(set_tab_badge::SetTabBadge),
+
+    /// Clear the badge on a tab
+    #[command(name = "clear-tab-badge", rename_all = "kebab")]
+    ClearTabBadge(clear_tab_badge::ClearTabBadge),
+
+    /// Set a notification on a tab using the metadata-backed notification API
+    #[command(name = "set-tab-notification", rename_all = "kebab")]
+    SetTabNotification(set_tab_notification::SetTabNotification),
+
+    /// Clear the notification on a tab
+    #[command(name = "clear-tab-notification", rename_all = "kebab")]
+    ClearTabNotification(clear_tab_notification::ClearTabNotification),
+
     /// Change the title of a window
     #[command(name = "set-window-title", rename_all = "kebab")]
     SetWindowTitle(set_window_title::SetWindowTitle),
@@ -209,6 +229,10 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::SetTabTitle(cmd) => cmd.run(client).await,
         CliSubCommand::SetTabMetadata(cmd) => cmd.run(client).await,
         CliSubCommand::ClearTabMetadata(cmd) => cmd.run(client).await,
+        CliSubCommand::SetTabBadge(cmd) => cmd.run(client).await,
+        CliSubCommand::ClearTabBadge(cmd) => cmd.run(client).await,
+        CliSubCommand::SetTabNotification(cmd) => cmd.run(client).await,
+        CliSubCommand::ClearTabNotification(cmd) => cmd.run(client).await,
         CliSubCommand::SetWindowTitle(cmd) => cmd.run(client).await,
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,

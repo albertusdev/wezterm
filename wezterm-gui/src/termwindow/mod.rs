@@ -46,7 +46,8 @@ use mux::pane::{
 use mux::renderable::RenderableDimensions;
 use mux::tab::{
     PositionedPane, PositionedSplit, SplitDirection, SplitRequest, SplitSize as MuxSplitSize, Tab,
-    TabId,
+    TabId, TAB_METADATA_BADGE, TAB_METADATA_BADGE_COLOR, TAB_METADATA_NOTIFICATION,
+    TAB_METADATA_NOTIFICATION_COLOR,
 };
 use mux::window::WindowId as MuxWindowId;
 use mux::{Mux, MuxNotification};
@@ -154,6 +155,7 @@ pub enum TermWindowNotif {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UIItemType {
     TabBar(TabBarItem),
+    TabBarResizeHandle,
     CloseTab(usize),
     AboveScrollThumb,
     ScrollThumb,
@@ -217,6 +219,10 @@ pub struct TabInformation {
     pub window_id: MuxWindowId,
     pub tab_title: String,
     pub metadata: HashMap<String, String>,
+    pub badge: Option<String>,
+    pub badge_color: Option<String>,
+    pub notification: Option<String>,
+    pub notification_color: Option<String>,
 }
 
 impl UserData for TabInformation {
@@ -247,6 +253,12 @@ impl UserData for TabInformation {
         fields.add_field_method_get("window_id", |_, this| Ok(this.window_id));
         fields.add_field_method_get("tab_title", |_, this| Ok(this.tab_title.clone()));
         fields.add_field_method_get("metadata", |_, this| Ok(this.metadata.clone()));
+        fields.add_field_method_get("badge", |_, this| Ok(this.badge.clone()));
+        fields.add_field_method_get("badge_color", |_, this| Ok(this.badge_color.clone()));
+        fields.add_field_method_get("notification", |_, this| Ok(this.notification.clone()));
+        fields.add_field_method_get("notification_color", |_, this| {
+            Ok(this.notification_color.clone())
+        });
         fields.add_field_method_get("window_title", |_, this| {
             let mux = Mux::get();
             let window = mux.get_window(this.window_id).ok_or_else(|| {
@@ -603,6 +615,14 @@ impl TermWindow {
         let render_metrics = RenderMetrics::new(&fontconfig)?;
         log::trace!("using render_metrics {:#?}", render_metrics);
 
+        let terminal_size = TerminalSize {
+            rows: physical_rows,
+            cols: physical_cols,
+            pixel_width: render_metrics.cell_size.width as usize * physical_cols,
+            pixel_height: render_metrics.cell_size.height as usize * physical_rows,
+            dpi: dpi as u32,
+        };
+
         // Initially we have only a single tab, so take that into account
         // for the tab bar state.
         let show_tab_bar = config.enable_tab_bar && !config.hide_tab_bar_if_only_one_tab;
@@ -612,17 +632,14 @@ impl TermWindow {
             0
         };
         let tab_bar_width = if show_tab_bar && config.resolved_tab_bar_position().is_vertical() {
-            Self::tab_bar_pixel_width_impl(&config, &fontconfig)? as usize
+            Self::tab_bar_pixel_width_impl(
+                &config,
+                &fontconfig,
+                dpi as f32,
+                terminal_size.pixel_width as f32,
+            )? as usize
         } else {
             0
-        };
-
-        let terminal_size = TerminalSize {
-            rows: physical_rows,
-            cols: physical_cols,
-            pixel_width: (render_metrics.cell_size.width as usize * physical_cols),
-            pixel_height: (render_metrics.cell_size.height as usize * physical_rows),
-            dpi: dpi as u32,
         };
 
         if terminal_size != size {
@@ -3475,7 +3492,7 @@ impl TermWindow {
         }
     }
 
-    fn get_tab_information(&mut self) -> Vec<TabInformation> {
+    fn get_tab_information(&self) -> Vec<TabInformation> {
         let mux = Mux::get();
         let window = match mux.get_window(self.mux_window_id) {
             Some(window) => window,
@@ -3488,6 +3505,7 @@ impl TermWindow {
             .enumerate()
             .map(|(idx, tab)| {
                 let panes = self.get_pos_panes_for_tab(tab);
+                let metadata = tab.get_metadata();
 
                 TabInformation {
                     tab_index: idx,
@@ -3499,7 +3517,11 @@ impl TermWindow {
                         .unwrap_or(false),
                     window_id: self.mux_window_id,
                     tab_title: tab.get_title(),
-                    metadata: tab.get_metadata(),
+                    badge: metadata.get(TAB_METADATA_BADGE).cloned(),
+                    badge_color: metadata.get(TAB_METADATA_BADGE_COLOR).cloned(),
+                    notification: metadata.get(TAB_METADATA_NOTIFICATION).cloned(),
+                    notification_color: metadata.get(TAB_METADATA_NOTIFICATION_COLOR).cloned(),
+                    metadata,
                     active_pane: panes
                         .iter()
                         .find(|p| p.is_active)

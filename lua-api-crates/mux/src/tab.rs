@@ -70,6 +70,46 @@ impl UserData for MuxTab {
                 Ok(tab.set_metadata_values(metadata))
             },
         );
+        methods.add_method("get_badge", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_badge())
+        });
+        methods.add_method("set_badge", |_, this, badge: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_badge(&badge))
+        });
+        methods.add_method("set_badge_color", |_, this, color: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_badge_color(&color))
+        });
+        methods.add_method("clear_badge", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.clear_badge())
+        });
+        methods.add_method("get_notification", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_notification())
+        });
+        methods.add_method("set_notification", |_, this, notification: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_notification(&notification))
+        });
+        methods.add_method("set_notification_color", |_, this, color: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_notification_color(&color))
+        });
+        methods.add_method("clear_notification", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.clear_notification())
+        });
         methods.add_method("active_pane", |_, this, _: ()| {
             let mux = get_mux()?;
             let tab = this.resolve(&mux)?;

@@ -20,6 +20,11 @@ pub type Cursor = bintree::Cursor<Arc<dyn Pane>, SplitDirectionAndSize>;
 static TAB_ID: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::AtomicUsize::new(0);
 pub type TabId = usize;
 
+pub const TAB_METADATA_BADGE: &str = "wezterm.badge";
+pub const TAB_METADATA_BADGE_COLOR: &str = "wezterm.badge_color";
+pub const TAB_METADATA_NOTIFICATION: &str = "wezterm.notification";
+pub const TAB_METADATA_NOTIFICATION_COLOR: &str = "wezterm.notification_color";
+
 #[derive(Default)]
 struct Recency {
     count: usize,
@@ -561,6 +566,64 @@ impl Tab {
     pub fn remove_metadata(&self, key: &str) {
         let mut metadata = self.get_metadata();
         metadata.remove(key);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_badge(&self) -> Option<String> {
+        self.inner.lock().metadata.get(TAB_METADATA_BADGE).cloned()
+    }
+
+    pub fn set_badge(&self, badge: &str) {
+        self.set_metadata(TAB_METADATA_BADGE, badge);
+    }
+
+    pub fn get_badge_color(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_BADGE_COLOR)
+            .cloned()
+    }
+
+    pub fn set_badge_color(&self, color: &str) {
+        self.set_metadata(TAB_METADATA_BADGE_COLOR, color);
+    }
+
+    pub fn clear_badge(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_BADGE);
+        metadata.remove(TAB_METADATA_BADGE_COLOR);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_notification(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_NOTIFICATION)
+            .cloned()
+    }
+
+    pub fn set_notification(&self, notification: &str) {
+        self.set_metadata(TAB_METADATA_NOTIFICATION, notification);
+    }
+
+    pub fn get_notification_color(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_NOTIFICATION_COLOR)
+            .cloned()
+    }
+
+    pub fn set_notification_color(&self, color: &str) {
+        self.set_metadata(TAB_METADATA_NOTIFICATION_COLOR, color);
+    }
+
+    pub fn clear_notification(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_NOTIFICATION);
+        metadata.remove(TAB_METADATA_NOTIFICATION_COLOR);
         self.set_metadata_values(metadata);
     }
 

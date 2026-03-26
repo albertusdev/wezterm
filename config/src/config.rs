@@ -476,6 +476,9 @@ pub struct Config {
     #[dynamic(default)]
     pub tab_bar_position: Option<TabBarPosition>,
 
+    #[dynamic(try_from = "crate::units::OptPixelUnit", default)]
+    pub tab_bar_width: Option<Dimension>,
+
     #[dynamic(default)]
     pub tab_bar_at_bottom: bool,
 

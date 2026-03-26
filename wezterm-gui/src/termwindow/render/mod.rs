@@ -366,6 +366,11 @@ impl crate::TermWindow {
         let horizontal_gap = self.dimensions.pixel_width as f32
             - self.terminal_size.pixel_width as f32
             - padding_left
+            - if self.show_tab_bar && self.config.resolved_tab_bar_position().is_vertical() {
+                self.tab_bar_pixel_width().unwrap_or(0.)
+            } else {
+                0.
+            }
             - if self.show_scroll_bar && padding_right.is_zero() {
                 h_context.pixel_cell
             } else {

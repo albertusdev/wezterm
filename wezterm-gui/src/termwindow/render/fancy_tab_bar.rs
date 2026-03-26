@@ -4,9 +4,10 @@ use crate::termwindow::box_model::*;
 use crate::termwindow::render::corners::*;
 
 use crate::termwindow::render::window_buttons::window_button_element;
-use crate::termwindow::{UIItem, UIItemType};
+use crate::termwindow::{TabInformation, UIItem, UIItemType};
 use crate::utilsprites::RenderMetrics;
-use config::{Dimension, DimensionContext, TabBarColors, TabBarPosition};
+use config::{Dimension, DimensionContext, RgbaColor, TabBarColors, TabBarPosition};
+use std::convert::TryFrom;
 use std::rc::Rc;
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
@@ -472,6 +473,7 @@ impl crate::TermWindow {
         let font = self.fonts.title_font()?;
         let metrics = RenderMetrics::with_font_metrics(&font.metrics());
         let items = self.tab_bar.items();
+        let tab_info = self.get_tab_information();
         let colors = self
             .config
             .colors
@@ -568,7 +570,55 @@ impl crate::TermWindow {
             .min_width(Some(Dimension::Pixels(content_width)))
         };
 
-        let tab_item = |item: &TabEntry, tab_idx: usize, active: bool| {
+        let tab_chip =
+            |text: &str, color: Option<&String>, default_bg: RgbaColor, default_fg: RgbaColor| {
+                let bg = color
+                    .and_then(|s| RgbaColor::try_from(s.clone()).ok())
+                    .unwrap_or(default_bg);
+                Element::new(&font, ElementContent::Text(text.to_string()))
+                    .margin(BoxDimension {
+                        left: Dimension::Cells(0.0),
+                        right: Dimension::Cells(0.35),
+                        top: Dimension::Cells(0.0),
+                        bottom: Dimension::Cells(0.0),
+                    })
+                    .padding(BoxDimension {
+                        left: Dimension::Cells(0.35),
+                        right: Dimension::Cells(0.35),
+                        top: Dimension::Cells(0.05),
+                        bottom: Dimension::Cells(0.05),
+                    })
+                    .border(BoxDimension::new(Dimension::Pixels(1.)))
+                    .border_corners(Some(Corners {
+                        top_left: SizedPoly {
+                            width: Dimension::Cells(0.35),
+                            height: Dimension::Cells(0.35),
+                            poly: TOP_LEFT_ROUNDED_CORNER,
+                        },
+                        bottom_left: SizedPoly {
+                            width: Dimension::Cells(0.35),
+                            height: Dimension::Cells(0.35),
+                            poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                        },
+                        top_right: SizedPoly {
+                            width: Dimension::Cells(0.35),
+                            height: Dimension::Cells(0.35),
+                            poly: TOP_RIGHT_ROUNDED_CORNER,
+                        },
+                        bottom_right: SizedPoly {
+                            width: Dimension::Cells(0.35),
+                            height: Dimension::Cells(0.35),
+                            poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                        },
+                    }))
+                    .colors(ElementColors {
+                        border: BorderColor::new(bg.to_linear()),
+                        bg: bg.to_linear().into(),
+                        text: default_fg.to_linear().into(),
+                    })
+            };
+
+        let tab_item = |item: &TabEntry, tab: &TabInformation, active: bool| {
             let mut elem = Element::with_line(&font, &item.title, palette)
                 .display(DisplayType::Block)
                 .item_type(UIItemType::TabBar(item.item.clone()))
@@ -645,16 +695,41 @@ impl crate::TermWindow {
                 })
             };
 
-            if self.config.show_close_tab_button_in_tabs {
-                elem.content = match elem.content {
-                    ElementContent::Text(_) => unreachable!(),
-                    ElementContent::Poly { .. } => unreachable!(),
-                    ElementContent::Children(mut kids) => {
-                        kids.push(make_x_button(&font, &metrics, &colors, tab_idx, active));
-                        ElementContent::Children(kids)
+            elem.content = match elem.content {
+                ElementContent::Text(_) => unreachable!(),
+                ElementContent::Poly { .. } => unreachable!(),
+                ElementContent::Children(mut kids) => {
+                    if let Some(badge) = tab.badge.as_deref() {
+                        kids.insert(
+                            0,
+                            tab_chip(
+                                badge,
+                                tab.badge_color.as_ref(),
+                                colors.new_tab().bg_color,
+                                colors.new_tab().fg_color,
+                            ),
+                        );
                     }
-                };
-            }
+                    if let Some(notification) = tab.notification.as_deref() {
+                        kids.push(tab_chip(
+                            notification,
+                            tab.notification_color.as_ref(),
+                            RgbaColor::from((209, 77, 65)),
+                            colors.active_tab().fg_color,
+                        ));
+                    }
+                    if self.config.show_close_tab_button_in_tabs {
+                        kids.push(make_x_button(
+                            &font,
+                            &metrics,
+                            &colors,
+                            tab.tab_index,
+                            active,
+                        ));
+                    }
+                    ElementContent::Children(kids)
+                }
+            };
 
             elem
         };
@@ -688,7 +763,9 @@ impl crate::TermWindow {
                         }),
                     );
                 }
-                TabBarItem::Tab { tab_idx, active } => tabs.push(tab_item(item, tab_idx, active)),
+                TabBarItem::Tab { tab_idx, active } => {
+                    tabs.push(tab_item(item, &tab_info[tab_idx], active))
+                }
                 TabBarItem::NewTabButton => footer.push(new_tab_item(item)),
                 TabBarItem::None => {}
             }
@@ -781,7 +858,23 @@ impl crate::TermWindow {
         let computed = self.fancy_tab_bar.as_ref().ok_or_else(|| {
             anyhow::anyhow!("paint_fancy_tab_bar called but fancy_tab_bar is None")
         })?;
-        let ui_items = computed.ui_items();
+        let mut ui_items = computed.ui_items();
+
+        if self.config.resolved_tab_bar_position().is_vertical() {
+            let handle_width = 6usize;
+            let x = if self.config.resolved_tab_bar_position().is_left() {
+                computed.bounds.max_x().round() as isize - (handle_width as isize / 2)
+            } else {
+                computed.bounds.min_x().round() as isize - (handle_width as isize / 2)
+            };
+            ui_items.push(UIItem {
+                x: x.max(0) as usize,
+                y: computed.bounds.min_y().round().max(0.) as usize,
+                width: handle_width,
+                height: computed.bounds.height().round().max(0.) as usize,
+                item_type: UIItemType::TabBarResizeHandle,
+            });
+        }
 
         let gl_state = self.render_state.as_ref().unwrap();
         self.render_element(&computed, gl_state, None)?;
