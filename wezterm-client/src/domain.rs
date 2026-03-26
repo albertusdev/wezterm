@@ -354,6 +354,22 @@ fn mux_notify_client_domain(local_domain_id: DomainId, notif: MuxNotification) -
                 }
             }
         }
+        MuxNotification::TabMetadataChanged { tab_id, metadata } => {
+            if let Some(remote_tab_id) = client_domain.local_to_remote_tab_id(tab_id) {
+                if let Some(inner) = client_domain.inner() {
+                    promise::spawn::spawn(async move {
+                        inner
+                            .client
+                            .set_tab_metadata(codec::TabMetadataChanged {
+                                tab_id: remote_tab_id,
+                                metadata,
+                            })
+                            .await
+                    })
+                    .detach();
+                }
+            }
+        }
         MuxNotification::WindowTitleChanged {
             window_id,
             title: _,
@@ -501,6 +517,20 @@ impl ClientDomain {
         }
     }
 
+    pub fn process_remote_tab_metadata_change(
+        &self,
+        remote_tab_id: TabId,
+        metadata: HashMap<String, String>,
+    ) {
+        if let Some(inner) = self.inner() {
+            if let Some(local_tab_id) = inner.remote_to_local_tab_id(remote_tab_id) {
+                if let Some(tab) = Mux::get().get_tab(local_tab_id) {
+                    tab.set_metadata_values(metadata);
+                }
+            }
+        }
+    }
+
     fn process_pane_list(
         inner: Arc<ClientInner>,
         panes: ListPanesResponse,
@@ -537,7 +567,9 @@ impl ClientDomain {
             .copied()
             .collect();
 
-        for (tabroot, tab_title) in panes.tabs.into_iter().zip(panes.tab_titles.iter()) {
+        for (idx, tabroot) in panes.tabs.into_iter().enumerate() {
+            let tab_title = panes.tab_titles.get(idx).map(String::as_str).unwrap_or("");
+            let tab_metadata = panes.tab_metadata.get(idx).cloned().unwrap_or_default();
             let root_size = match tabroot.root_size() {
                 Some(size) => size,
                 None => continue,
@@ -574,6 +606,7 @@ impl ClientDomain {
                 }
 
                 tab.set_title(tab_title);
+                tab.set_metadata_values(tab_metadata);
 
                 log::debug!("domain: {} tree: {:#?}", inner.local_domain_id, tabroot);
                 let mut workspace = None;

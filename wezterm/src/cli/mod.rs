@@ -7,6 +7,7 @@ mod activate_pane;
 mod activate_pane_direction;
 mod activate_tab;
 mod adjust_pane_size;
+mod clear_tab_metadata;
 mod get_pane_direction;
 mod get_text;
 mod kill_pane;
@@ -16,10 +17,12 @@ mod move_pane_to_new_tab;
 mod proxy;
 mod rename_workspace;
 mod send_text;
+mod set_tab_metadata;
 mod set_tab_title;
 mod set_window_title;
 mod spawn_command;
 mod split_pane;
+mod tab_resolution;
 mod tls_creds;
 mod zoom_pane;
 
@@ -152,6 +155,14 @@ Outputs the pane-id for the newly created pane on success"
     #[command(name = "set-tab-title", rename_all = "kebab")]
     SetTabTitle(set_tab_title::SetTabTitle),
 
+    /// Replace the metadata map for a tab
+    #[command(name = "set-tab-metadata", rename_all = "kebab")]
+    SetTabMetadata(set_tab_metadata::SetTabMetadata),
+
+    /// Clear some or all metadata keys from a tab
+    #[command(name = "clear-tab-metadata", rename_all = "kebab")]
+    ClearTabMetadata(clear_tab_metadata::ClearTabMetadata),
+
     /// Change the title of a window
     #[command(name = "set-window-title", rename_all = "kebab")]
     SetWindowTitle(set_window_title::SetWindowTitle),
@@ -196,6 +207,8 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::AdjustPaneSize(cmd) => cmd.run(client).await,
         CliSubCommand::ActivateTab(cmd) => cmd.run(client).await,
         CliSubCommand::SetTabTitle(cmd) => cmd.run(client).await,
+        CliSubCommand::SetTabMetadata(cmd) => cmd.run(client).await,
+        CliSubCommand::ClearTabMetadata(cmd) => cmd.run(client).await,
         CliSubCommand::SetWindowTitle(cmd) => cmd.run(client).await,
         CliSubCommand::RenameWorkspace(cmd) => cmd.run(client).await,
         CliSubCommand::ZoomPane(cmd) => cmd.run(client).await,

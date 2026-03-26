@@ -441,7 +441,7 @@ macro_rules! pdu {
 /// The overall version of the codec.
 /// This must be bumped when backwards incompatible changes
 /// are made to the types and protocol.
-pub const CODEC_VERSION: usize = 45;
+pub const CODEC_VERSION: usize = 46;
 
 // Defines the Pdu enum.
 // Each struct has an explicit identifying number.
@@ -502,6 +502,7 @@ pdu! {
     GetPaneDirection: 60,
     GetPaneDirectionResponse: 61,
     AdjustPaneSize: 62,
+    TabMetadataChanged: 63,
 }
 
 impl Pdu {
@@ -646,6 +647,8 @@ pub struct ListPanes {}
 pub struct ListPanesResponse {
     pub tabs: Vec<PaneNode>,
     pub tab_titles: Vec<String>,
+    #[serde(default)]
+    pub tab_metadata: Vec<HashMap<String, String>>,
     pub window_titles: HashMap<WindowId, String>,
 }
 
@@ -811,6 +814,12 @@ pub struct TabResized {
 pub struct TabTitleChanged {
     pub tab_id: TabId,
     pub title: String,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Debug)]
+pub struct TabMetadataChanged {
+    pub tab_id: TabId,
+    pub metadata: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Debug)]

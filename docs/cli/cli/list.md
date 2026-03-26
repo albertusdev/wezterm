@@ -39,7 +39,8 @@ $ wezterm cli list --format json
       "cols": 80
     },
     "title": "wezterm cli list --format json -- wez@foo:~",
-    "cwd": "file://foo/home/wez/"
+    "cwd": "file://foo/home/wez/",
+    "tab_metadata": {}
   }
 ]
 ```

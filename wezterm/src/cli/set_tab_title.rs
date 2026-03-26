@@ -1,7 +1,7 @@
+use crate::cli::tab_resolution::resolve_tab_id;
 use clap::Parser;
 use mux::pane::PaneId;
 use mux::tab::TabId;
-use std::collections::HashMap;
 use wezterm_client::client::Client;
 
 #[derive(Debug, Parser, Clone)]
@@ -23,34 +23,7 @@ pub struct SetTabTitle {
 
 impl SetTabTitle {
     pub async fn run(self, client: Client) -> anyhow::Result<()> {
-        let panes = client.list_panes().await?;
-
-        let mut pane_id_to_tab_id = HashMap::new();
-
-        for tabroot in panes.tabs {
-            let mut cursor = tabroot.into_tree().cursor();
-
-            loop {
-                if let Some(entry) = cursor.leaf_mut() {
-                    pane_id_to_tab_id.insert(entry.pane_id, entry.tab_id);
-                }
-                match cursor.preorder_next() {
-                    Ok(c) => cursor = c,
-                    Err(_) => break,
-                }
-            }
-        }
-
-        let tab_id = if let Some(tab_id) = self.tab_id {
-            tab_id
-        } else {
-            // Find the current tab from the pane id
-            let pane_id = client.resolve_pane_id(self.pane_id).await?;
-            pane_id_to_tab_id
-                .get(&pane_id)
-                .copied()
-                .ok_or_else(|| anyhow::anyhow!("unable to resolve current tab"))?
-        };
+        let tab_id = resolve_tab_id(&client, self.tab_id, self.pane_id).await?;
 
         client
             .set_tab_title(codec::TabTitleChanged {

@@ -216,6 +216,7 @@ pub struct TabInformation {
     pub active_pane: Option<PaneInformation>,
     pub window_id: MuxWindowId,
     pub tab_title: String,
+    pub metadata: HashMap<String, String>,
 }
 
 impl UserData for TabInformation {
@@ -245,6 +246,7 @@ impl UserData for TabInformation {
         });
         fields.add_field_method_get("window_id", |_, this| Ok(this.window_id));
         fields.add_field_method_get("tab_title", |_, this| Ok(this.tab_title.clone()));
+        fields.add_field_method_get("metadata", |_, this| Ok(this.metadata.clone()));
         fields.add_field_method_get("window_title", |_, this| {
             let mux = Mux::get();
             let window = mux.get_window(this.window_id).ok_or_else(|| {
@@ -1308,6 +1310,9 @@ impl TermWindow {
                 MuxNotification::TabTitleChanged { .. } => {
                     self.update_title_post_status();
                 }
+                MuxNotification::TabMetadataChanged { .. } => {
+                    self.update_title_post_status();
+                }
                 MuxNotification::PaneAdded(_)
                 | MuxNotification::WorkspaceRenamed { .. }
                 | MuxNotification::PaneRemoved(_)
@@ -1507,7 +1512,8 @@ impl TermWindow {
                 return false;
             }
             MuxNotification::TabResized(tab_id)
-            | MuxNotification::TabTitleChanged { tab_id, .. } => {
+            | MuxNotification::TabTitleChanged { tab_id, .. }
+            | MuxNotification::TabMetadataChanged { tab_id, .. } => {
                 let mux = Mux::get();
                 if mux.window_containing_tab(tab_id) == Some(mux_window_id) {
                     // fall through
@@ -3478,6 +3484,7 @@ impl TermWindow {
                         .unwrap_or(false),
                     window_id: self.mux_window_id,
                     tab_title: tab.get_title(),
+                    metadata: tab.get_metadata(),
                     active_pane: panes
                         .iter()
                         .find(|p| p.is_active)

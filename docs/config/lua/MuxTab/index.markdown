@@ -6,3 +6,7 @@
 
 It has the following methods:
 
+* [get_metadata](get_metadata.md)
+* [remove_metadata](remove_metadata.md)
+* [set_metadata](set_metadata.md)
+* [set_metadata_values](set_metadata_values.md)

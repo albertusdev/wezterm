@@ -45,6 +45,7 @@ struct TabInner {
     active: usize,
     zoomed: Option<Arc<dyn Pane>>,
     title: String,
+    metadata: HashMap<String, String>,
     recency: Recency,
 }
 
@@ -533,6 +534,36 @@ impl Tab {
         }
     }
 
+    pub fn get_metadata(&self) -> HashMap<String, String> {
+        self.inner.lock().metadata.clone()
+    }
+
+    pub fn set_metadata_values(&self, metadata: HashMap<String, String>) {
+        let mut inner = self.inner.lock();
+        if inner.metadata != metadata {
+            inner.metadata = metadata;
+            let metadata = inner.metadata.clone();
+            Mux::try_get().map(|mux| {
+                mux.notify(MuxNotification::TabMetadataChanged {
+                    tab_id: inner.id,
+                    metadata,
+                })
+            });
+        }
+    }
+
+    pub fn set_metadata(&self, key: &str, value: &str) {
+        let mut metadata = self.get_metadata();
+        metadata.insert(key.to_string(), value.to_string());
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn remove_metadata(&self, key: &str) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(key);
+        self.set_metadata_values(metadata);
+    }
+
     /// Called by the multiplexer client when building a local tab to
     /// mirror a remote tab.  The supplied `root` is the information
     /// about our counterpart in the the remote server.
@@ -763,6 +794,7 @@ impl TabInner {
             active: 0,
             zoomed: None,
             title: String::new(),
+            metadata: HashMap::new(),
             recency: Recency::default(),
         }
     }

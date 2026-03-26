@@ -184,6 +184,12 @@ where
                     .await?;
                 stream.flush().await.context("flushing PDU to client")?;
             }
+            Ok(Item::Notif(MuxNotification::TabMetadataChanged { tab_id, metadata })) => {
+                Pdu::TabMetadataChanged(codec::TabMetadataChanged { tab_id, metadata })
+                    .encode_async(&mut stream, 0)
+                    .await?;
+                stream.flush().await.context("flushing PDU to client")?;
+            }
             Ok(Item::Notif(MuxNotification::WindowTitleChanged { window_id, title })) => {
                 Pdu::WindowTitleChanged(codec::WindowTitleChanged { window_id, title })
                     .encode_async(&mut stream, 0)

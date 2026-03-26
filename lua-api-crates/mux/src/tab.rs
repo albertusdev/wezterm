@@ -3,6 +3,7 @@ use config::keyassignment::PaneDirection;
 use super::*;
 use luahelper::mlua::Value;
 use luahelper::{from_lua, to_lua};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
@@ -46,6 +47,29 @@ impl UserData for MuxTab {
             let tab = this.resolve(&mux)?;
             Ok(tab.set_title(&title))
         });
+        methods.add_method("get_metadata", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_metadata())
+        });
+        methods.add_method("set_metadata", |_, this, (key, value): (String, String)| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_metadata(&key, &value))
+        });
+        methods.add_method("remove_metadata", |_, this, key: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.remove_metadata(&key))
+        });
+        methods.add_method(
+            "set_metadata_values",
+            |_, this, metadata: HashMap<String, String>| {
+                let mux = get_mux()?;
+                let tab = this.resolve(&mux)?;
+                Ok(tab.set_metadata_values(metadata))
+            },
+        );
         methods.add_method("active_pane", |_, this, _: ()| {
             let mux = get_mux()?;
             let tab = this.resolve(&mux)?;

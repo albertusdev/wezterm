@@ -87,6 +87,10 @@ pub enum MuxNotification {
         tab_id: TabId,
         title: String,
     },
+    TabMetadataChanged {
+        tab_id: TabId,
+        metadata: HashMap<String, String>,
+    },
     WindowTitleChanged {
         window_id: WindowId,
         title: String,

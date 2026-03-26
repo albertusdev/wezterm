@@ -1,6 +1,7 @@
 use crate::cli::CliOutputFormatKind;
 use clap::Parser;
 use serde::Serializer as _;
+use std::collections::HashMap;
 use tabout::{tabulate_output, Alignment, Column};
 use wezterm_client::client::Client;
 use wezterm_term::TerminalSize;
@@ -20,7 +21,9 @@ impl ListCommand {
         let mut output_items = vec![];
         let panes = client.list_panes().await?;
 
-        for (tabroot, tab_title) in panes.tabs.into_iter().zip(panes.tab_titles.iter()) {
+        for (idx, tabroot) in panes.tabs.into_iter().enumerate() {
+            let tab_title = panes.tab_titles.get(idx).map(String::as_str).unwrap_or("");
+            let tab_metadata = panes.tab_metadata.get(idx).cloned().unwrap_or_default();
             let mut cursor = tabroot.into_tree().cursor();
 
             loop {
@@ -33,6 +36,7 @@ impl ListCommand {
                     output_items.push(CliListResultItem::from(
                         entry.clone(),
                         tab_title,
+                        tab_metadata.clone(),
                         window_title,
                     ));
                 }
@@ -135,6 +139,7 @@ struct CliListResultItem {
     /// Number of rows from the top of the tab area to the top of this pane
     top_row: usize,
     tab_title: String,
+    tab_metadata: HashMap<String, String>,
     window_title: String,
     is_active: bool,
     is_zoomed: bool,
@@ -142,7 +147,12 @@ struct CliListResultItem {
 }
 
 impl CliListResultItem {
-    fn from(pane: mux::tab::PaneEntry, tab_title: &str, window_title: &str) -> CliListResultItem {
+    fn from(
+        pane: mux::tab::PaneEntry,
+        tab_title: &str,
+        tab_metadata: HashMap<String, String>,
+        window_title: &str,
+    ) -> CliListResultItem {
         let mux::tab::PaneEntry {
             window_id,
             tab_id,
@@ -193,6 +203,7 @@ impl CliListResultItem {
             left_col,
             top_row,
             tab_title: tab_title.to_string(),
+            tab_metadata,
             window_title: window_title.to_string(),
             is_active: is_active_pane,
             is_zoomed: is_zoomed_pane,

@@ -15,5 +15,5 @@ The `TabInformation` struct contains the following fields:
 * `window_id` - the ID of the window that contains this tab {{since('20220807-113146-c2fee766', inline=True)}}
 * `window_title` - the title of the window that contains this tab {{since('20220807-113146-c2fee766', inline=True)}}
 * `tab_title` - the title of the tab {{since('20220807-113146-c2fee766', inline=True)}}
-
+* `metadata` - a table of string metadata associated with the tab
 

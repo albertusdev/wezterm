@@ -297,6 +297,27 @@ fn process_unilateral(
             .detach();
             return Ok(());
         }
+        Pdu::TabMetadataChanged(TabMetadataChanged { tab_id, metadata }) => {
+            let metadata = metadata.clone();
+            let tab_id = *tab_id;
+            promise::spawn::spawn_into_main_thread(async move {
+                let mux = Mux::try_get().ok_or_else(|| anyhow!("no more mux"))?;
+                let client_domain = mux
+                    .get_domain(local_domain_id)
+                    .ok_or_else(|| anyhow!("no such domain {}", local_domain_id))?;
+                let client_domain =
+                    client_domain
+                        .downcast_ref::<ClientDomain>()
+                        .ok_or_else(|| {
+                            anyhow!("domain {} is not a ClientDomain instance", local_domain_id)
+                        })?;
+
+                client_domain.process_remote_tab_metadata_change(tab_id, metadata);
+                anyhow::Result::<()>::Ok(())
+            })
+            .detach();
+            return Ok(());
+        }
         Pdu::TabResized(_) | Pdu::TabAddedToWindow(_) => {
             log::trace!("resync due to {:?}", decoded.pdu);
             promise::spawn::spawn_into_main_thread(async move {
@@ -1380,6 +1401,7 @@ impl Client {
     rpc!(get_image_cell, GetImageCell, GetImageCellResponse);
     rpc!(set_configured_palette_for_pane, SetPalette, UnitResponse);
     rpc!(set_tab_title, TabTitleChanged, UnitResponse);
+    rpc!(set_tab_metadata, TabMetadataChanged, UnitResponse);
     rpc!(set_window_title, WindowTitleChanged, UnitResponse);
     rpc!(rename_workspace, RenameWorkspace, UnitResponse);
     rpc!(erase_scrollback, EraseScrollbackRequest, UnitResponse);
