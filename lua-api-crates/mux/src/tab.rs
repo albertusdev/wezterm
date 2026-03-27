@@ -110,6 +110,56 @@ impl UserData for MuxTab {
             let tab = this.resolve(&mux)?;
             Ok(tab.clear_notification())
         });
+        methods.add_method("get_accent_color", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_accent_color())
+        });
+        methods.add_method("set_accent_color", |_, this, color: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_accent_color(&color))
+        });
+        methods.add_method("clear_accent_color", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.clear_accent_color())
+        });
+        methods.add_method("get_subtitle", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_subtitle())
+        });
+        methods.add_method("set_subtitle", |_, this, subtitle: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_subtitle(&subtitle))
+        });
+        methods.add_method("clear_subtitle", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.clear_subtitle())
+        });
+        methods.add_method("get_activity", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.get_activity())
+        });
+        methods.add_method("set_activity", |_, this, activity: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_activity(&activity))
+        });
+        methods.add_method("set_activity_color", |_, this, color: String| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.set_activity_color(&color))
+        });
+        methods.add_method("clear_activity", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let tab = this.resolve(&mux)?;
+            Ok(tab.clear_activity())
+        });
         methods.add_method("active_pane", |_, this, _: ()| {
             let mux = get_mux()?;
             let tab = this.resolve(&mux)?;

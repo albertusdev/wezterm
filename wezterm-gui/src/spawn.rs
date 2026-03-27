@@ -36,27 +36,9 @@ pub fn spawn_command_impl(
     .detach();
 }
 
-pub async fn spawn_command_internal(
-    spawn: SpawnCommand,
-    spawn_where: SpawnWhere,
-    size: TerminalSize,
-    src_window_id: Option<MuxWindowId>,
-    term_config: Arc<TermConfig>,
-) -> anyhow::Result<()> {
-    let mux = Mux::get();
-    let activity = Activity::new();
-
-    let current_pane_id = match src_window_id {
-        Some(window_id) => {
-            if let Some(tab) = mux.get_active_tab_for_window(window_id) {
-                tab.get_active_pane().map(|p| p.pane_id())
-            } else {
-                None
-            }
-        }
-        None => None,
-    };
-
+pub fn spawn_command_builder(
+    spawn: &SpawnCommand,
+) -> anyhow::Result<(Option<CommandBuilder>, Option<String>)> {
     let cwd = if let Some(cwd) = spawn.cwd.as_ref() {
         Some(cwd.to_str().map(|s| s.to_owned()).ok_or_else(|| {
             anyhow!(
@@ -89,6 +71,32 @@ pub async fn spawn_command_internal(
             Some(builder)
         }
     };
+
+    Ok((cmd_builder, cwd))
+}
+
+pub async fn spawn_command_internal(
+    spawn: SpawnCommand,
+    spawn_where: SpawnWhere,
+    size: TerminalSize,
+    src_window_id: Option<MuxWindowId>,
+    term_config: Arc<TermConfig>,
+) -> anyhow::Result<()> {
+    let mux = Mux::get();
+    let activity = Activity::new();
+
+    let current_pane_id = match src_window_id {
+        Some(window_id) => {
+            if let Some(tab) = mux.get_active_tab_for_window(window_id) {
+                tab.get_active_pane().map(|p| p.pane_id())
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+
+    let (cmd_builder, cwd) = spawn_command_builder(&spawn)?;
 
     let workspace = mux.active_workspace().clone();
 

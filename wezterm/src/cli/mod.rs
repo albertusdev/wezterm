@@ -7,6 +7,8 @@ mod activate_pane;
 mod activate_pane_direction;
 mod activate_tab;
 mod adjust_pane_size;
+mod clear_tab_accent;
+mod clear_tab_activity;
 mod clear_tab_badge;
 mod clear_tab_metadata;
 mod clear_tab_notification;
@@ -19,6 +21,8 @@ mod move_pane_to_new_tab;
 mod proxy;
 mod rename_workspace;
 mod send_text;
+mod set_tab_accent;
+mod set_tab_activity;
 mod set_tab_badge;
 mod set_tab_metadata;
 mod set_tab_notification;
@@ -175,6 +179,22 @@ Outputs the pane-id for the newly created pane on success"
     #[command(name = "clear-tab-badge", rename_all = "kebab")]
     ClearTabBadge(clear_tab_badge::ClearTabBadge),
 
+    /// Set a visual accent color on a tab
+    #[command(name = "set-tab-accent", rename_all = "kebab")]
+    SetTabAccent(set_tab_accent::SetTabAccent),
+
+    /// Clear the visual accent color on a tab
+    #[command(name = "clear-tab-accent", rename_all = "kebab")]
+    ClearTabAccent(clear_tab_accent::ClearTabAccent),
+
+    /// Set a compact activity marker on a tab
+    #[command(name = "set-tab-activity", rename_all = "kebab")]
+    SetTabActivity(set_tab_activity::SetTabActivity),
+
+    /// Clear the compact activity marker on a tab
+    #[command(name = "clear-tab-activity", rename_all = "kebab")]
+    ClearTabActivity(clear_tab_activity::ClearTabActivity),
+
     /// Set a notification on a tab using the metadata-backed notification API
     #[command(name = "set-tab-notification", rename_all = "kebab")]
     SetTabNotification(set_tab_notification::SetTabNotification),
@@ -231,6 +251,10 @@ async fn run_cli_async(opts: &crate::Opt, cli: CliCommand) -> anyhow::Result<()>
         CliSubCommand::ClearTabMetadata(cmd) => cmd.run(client).await,
         CliSubCommand::SetTabBadge(cmd) => cmd.run(client).await,
         CliSubCommand::ClearTabBadge(cmd) => cmd.run(client).await,
+        CliSubCommand::SetTabAccent(cmd) => cmd.run(client).await,
+        CliSubCommand::ClearTabAccent(cmd) => cmd.run(client).await,
+        CliSubCommand::SetTabActivity(cmd) => cmd.run(client).await,
+        CliSubCommand::ClearTabActivity(cmd) => cmd.run(client).await,
         CliSubCommand::SetTabNotification(cmd) => cmd.run(client).await,
         CliSubCommand::ClearTabNotification(cmd) => cmd.run(client).await,
         CliSubCommand::SetWindowTitle(cmd) => cmd.run(client).await,

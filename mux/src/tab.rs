@@ -24,6 +24,12 @@ pub const TAB_METADATA_BADGE: &str = "wezterm.badge";
 pub const TAB_METADATA_BADGE_COLOR: &str = "wezterm.badge_color";
 pub const TAB_METADATA_NOTIFICATION: &str = "wezterm.notification";
 pub const TAB_METADATA_NOTIFICATION_COLOR: &str = "wezterm.notification_color";
+pub const TAB_METADATA_SUMMARY: &str = "wezterm.summary";
+pub const TAB_METADATA_SUMMARY_COLOR: &str = "wezterm.summary_color";
+pub const TAB_METADATA_ACCENT_COLOR: &str = "wezterm.accent_color";
+pub const TAB_METADATA_SUBTITLE: &str = "wezterm.subtitle";
+pub const TAB_METADATA_ACTIVITY: &str = "wezterm.activity";
+pub const TAB_METADATA_ACTIVITY_COLOR: &str = "wezterm.activity_color";
 
 #[derive(Default)]
 struct Recency {
@@ -624,6 +630,104 @@ impl Tab {
         let mut metadata = self.get_metadata();
         metadata.remove(TAB_METADATA_NOTIFICATION);
         metadata.remove(TAB_METADATA_NOTIFICATION_COLOR);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_summary(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_SUMMARY)
+            .cloned()
+    }
+
+    pub fn set_summary(&self, summary: &str) {
+        self.set_metadata(TAB_METADATA_SUMMARY, summary);
+    }
+
+    pub fn get_summary_color(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_SUMMARY_COLOR)
+            .cloned()
+    }
+
+    pub fn set_summary_color(&self, color: &str) {
+        self.set_metadata(TAB_METADATA_SUMMARY_COLOR, color);
+    }
+
+    pub fn clear_summary(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_SUMMARY);
+        metadata.remove(TAB_METADATA_SUMMARY_COLOR);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_accent_color(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_ACCENT_COLOR)
+            .cloned()
+    }
+
+    pub fn set_accent_color(&self, color: &str) {
+        self.set_metadata(TAB_METADATA_ACCENT_COLOR, color);
+    }
+
+    pub fn clear_accent_color(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_ACCENT_COLOR);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_subtitle(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_SUBTITLE)
+            .cloned()
+    }
+
+    pub fn set_subtitle(&self, subtitle: &str) {
+        self.set_metadata(TAB_METADATA_SUBTITLE, subtitle);
+    }
+
+    pub fn clear_subtitle(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_SUBTITLE);
+        self.set_metadata_values(metadata);
+    }
+
+    pub fn get_activity(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_ACTIVITY)
+            .cloned()
+    }
+
+    pub fn set_activity(&self, activity: &str) {
+        self.set_metadata(TAB_METADATA_ACTIVITY, activity);
+    }
+
+    pub fn get_activity_color(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .metadata
+            .get(TAB_METADATA_ACTIVITY_COLOR)
+            .cloned()
+    }
+
+    pub fn set_activity_color(&self, color: &str) {
+        self.set_metadata(TAB_METADATA_ACTIVITY_COLOR, color);
+    }
+
+    pub fn clear_activity(&self) {
+        let mut metadata = self.get_metadata();
+        metadata.remove(TAB_METADATA_ACTIVITY);
+        metadata.remove(TAB_METADATA_ACTIVITY_COLOR);
         self.set_metadata_values(metadata);
     }
 

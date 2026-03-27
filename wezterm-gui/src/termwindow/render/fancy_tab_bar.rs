@@ -11,6 +11,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
+use window::color::LinearRgba;
 use window::{IntegratedTitleButtonAlignment, IntegratedTitleButtonStyle};
 
 const X_BUTTON: &[Poly] = &[
@@ -51,6 +52,71 @@ const PLUS_BUTTON: &[Poly] = &[
     },
 ];
 
+fn tab_accent_color(tab: Option<&TabInformation>) -> Option<RgbaColor> {
+    tab.and_then(|tab| {
+        tab.accent_color
+            .as_ref()
+            .and_then(|color| RgbaColor::try_from(color.clone()).ok())
+    })
+}
+
+fn tab_activity_color(tab: Option<&TabInformation>) -> Option<RgbaColor> {
+    tab.and_then(|tab| {
+        tab.activity_color
+            .as_ref()
+            .and_then(|color| RgbaColor::try_from(color.clone()).ok())
+    })
+}
+
+fn tab_summary_color(tab: Option<&TabInformation>) -> Option<RgbaColor> {
+    tab.and_then(|tab| {
+        tab.summary_color
+            .as_ref()
+            .and_then(|color| RgbaColor::try_from(color.clone()).ok())
+    })
+}
+
+fn tab_secondary_summary_color(tab: Option<&TabInformation>) -> Option<RgbaColor> {
+    tab.and_then(|tab| {
+        tab.metadata
+            .get("wezterm.summary_secondary_color")
+            .and_then(|color| RgbaColor::try_from(color.clone()).ok())
+    })
+}
+
+fn blend_color(base: RgbaColor, tint: RgbaColor, amount: f32) -> RgbaColor {
+    let (br, bg, bb, _) = base.as_rgba_u8();
+    let (tr, tg, tb, _) = tint.as_rgba_u8();
+    let mix = |base: u8, tint: u8| -> u8 {
+        let blended = (base as f32 * (1.0 - amount)) + (tint as f32 * amount);
+        blended.round().clamp(0.0, 255.0) as u8
+    };
+    RgbaColor::from((mix(br, tr), mix(bg, tg), mix(bb, tb)))
+}
+
+fn tab_activity_marker(
+    font: &Rc<LoadedFont>,
+    activity: &str,
+    color: Option<&RgbaColor>,
+) -> Element {
+    let marker_color = color
+        .cloned()
+        .unwrap_or_else(|| RgbaColor::from((124, 133, 156)));
+    Element::new(font, ElementContent::Text(activity.to_string()))
+        .line_height(Some(0.95))
+        .colors(ElementColors {
+            border: BorderColor::default(),
+            bg: LinearRgba::TRANSPARENT.into(),
+            text: marker_color.to_linear().into(),
+        })
+        .margin(BoxDimension {
+            left: Dimension::Cells(0.0),
+            right: Dimension::Cells(0.35),
+            top: Dimension::Cells(0.0),
+            bottom: Dimension::Cells(0.0),
+        })
+}
+
 impl crate::TermWindow {
     pub fn invalidate_fancy_tab_bar(&mut self) {
         self.fancy_tab_bar.take();
@@ -66,6 +132,7 @@ impl crate::TermWindow {
         let font = self.fonts.title_font()?;
         let metrics = RenderMetrics::with_font_metrics(&font.metrics());
         let items = self.tab_bar.items();
+        let tab_info = self.get_tab_information();
         let colors = self
             .config
             .colors
@@ -97,6 +164,10 @@ impl crate::TermWindow {
 
         let item_to_elem = |item: &TabEntry| -> Element {
             let element = Element::with_line(&font, &item.title, palette);
+            let tab_accent = match item.item {
+                TabBarItem::Tab { tab_idx, .. } => tab_accent_color(tab_info.get(tab_idx)),
+                _ => None,
+            };
 
             let bg_color = item
                 .title
@@ -171,51 +242,51 @@ impl crate::TermWindow {
                     bg: new_tab_hover.bg_color.to_linear().into(),
                     text: new_tab_hover.fg_color.to_linear().into(),
                 })),
-                TabBarItem::Tab { active, .. } if active => element
-                    .vertical_align(VerticalAlign::Bottom)
-                    .item_type(UIItemType::TabBar(item.item.clone()))
-                    .margin(BoxDimension {
-                        left: Dimension::Cells(0.),
-                        right: Dimension::Cells(0.),
-                        top: Dimension::Cells(0.2),
-                        bottom: Dimension::Cells(0.),
-                    })
-                    .padding(BoxDimension {
-                        left: Dimension::Cells(0.5),
-                        right: Dimension::Cells(0.5),
-                        top: Dimension::Cells(0.2),
-                        bottom: Dimension::Cells(0.25),
-                    })
-                    .border(BoxDimension::new(Dimension::Pixels(1.)))
-                    .border_corners(Some(Corners {
-                        top_left: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: TOP_LEFT_ROUNDED_CORNER,
-                        },
-                        top_right: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: TOP_RIGHT_ROUNDED_CORNER,
-                        },
-                        bottom_left: SizedPoly::none(),
-                        bottom_right: SizedPoly::none(),
-                    }))
-                    .colors(ElementColors {
-                        border: BorderColor::new(
-                            bg_color
-                                .unwrap_or_else(|| active_tab.bg_color.into())
-                                .to_linear(),
-                        ),
-                        bg: bg_color
-                            .unwrap_or_else(|| active_tab.bg_color.into())
-                            .to_linear()
-                            .into(),
-                        text: fg_color
-                            .unwrap_or_else(|| active_tab.fg_color.into())
-                            .to_linear()
-                            .into(),
-                    }),
+                TabBarItem::Tab { active, .. } if active => {
+                    let bg = bg_color.unwrap_or_else(|| active_tab.bg_color.into());
+                    let border = tab_accent
+                        .clone()
+                        .map(|color| color.to_linear())
+                        .unwrap_or_else(|| bg.to_linear());
+                    element
+                        .vertical_align(VerticalAlign::Bottom)
+                        .item_type(UIItemType::TabBar(item.item.clone()))
+                        .margin(BoxDimension {
+                            left: Dimension::Cells(0.),
+                            right: Dimension::Cells(0.),
+                            top: Dimension::Cells(0.2),
+                            bottom: Dimension::Cells(0.),
+                        })
+                        .padding(BoxDimension {
+                            left: Dimension::Cells(0.5),
+                            right: Dimension::Cells(0.5),
+                            top: Dimension::Cells(0.2),
+                            bottom: Dimension::Cells(0.25),
+                        })
+                        .border(BoxDimension::new(Dimension::Pixels(1.)))
+                        .border_corners(Some(Corners {
+                            top_left: SizedPoly {
+                                width: Dimension::Cells(0.5),
+                                height: Dimension::Cells(0.5),
+                                poly: TOP_LEFT_ROUNDED_CORNER,
+                            },
+                            top_right: SizedPoly {
+                                width: Dimension::Cells(0.5),
+                                height: Dimension::Cells(0.5),
+                                poly: TOP_RIGHT_ROUNDED_CORNER,
+                            },
+                            bottom_left: SizedPoly::none(),
+                            bottom_right: SizedPoly::none(),
+                        }))
+                        .colors(ElementColors {
+                            border: BorderColor::new(border),
+                            bg: bg.to_linear().into(),
+                            text: fg_color
+                                .unwrap_or_else(|| active_tab.fg_color.into())
+                                .to_linear()
+                                .into(),
+                        })
+                }
                 TabBarItem::Tab { .. } => element
                     .vertical_align(VerticalAlign::Bottom)
                     .item_type(UIItemType::TabBar(item.item.clone()))
@@ -259,7 +330,10 @@ impl crate::TermWindow {
                         let bg = bg_color
                             .unwrap_or_else(|| inactive_tab.bg_color.into())
                             .to_linear();
-                        let edge = colors.inactive_tab_edge().to_linear();
+                        let edge = tab_accent
+                            .clone()
+                            .unwrap_or_else(|| colors.inactive_tab_edge())
+                            .to_linear();
                         ElementColors {
                             border: BorderColor {
                                 left: bg,
@@ -276,12 +350,16 @@ impl crate::TermWindow {
                     })
                     .hover_colors({
                         let inactive_tab_hover = colors.inactive_tab_hover();
-                        Some(ElementColors {
-                            border: BorderColor::new(
+                        let hover_border = tab_accent
+                            .clone()
+                            .map(|color| color.to_linear())
+                            .unwrap_or_else(|| {
                                 bg_color
                                     .unwrap_or_else(|| inactive_tab_hover.bg_color.into())
-                                    .to_linear(),
-                            ),
+                                    .to_linear()
+                            });
+                        Some(ElementColors {
+                            border: BorderColor::new(hover_border),
                             bg: bg_color
                                 .unwrap_or_else(|| inactive_tab_hover.bg_color.into())
                                 .to_linear()
@@ -570,56 +648,257 @@ impl crate::TermWindow {
             .min_width(Some(Dimension::Pixels(content_width)))
         };
 
-        let tab_chip =
-            |text: &str, color: Option<&String>, default_bg: RgbaColor, default_fg: RgbaColor| {
-                let bg = color
-                    .and_then(|s| RgbaColor::try_from(s.clone()).ok())
-                    .unwrap_or(default_bg);
-                Element::new(&font, ElementContent::Text(text.to_string()))
-                    .margin(BoxDimension {
-                        left: Dimension::Cells(0.0),
-                        right: Dimension::Cells(0.35),
-                        top: Dimension::Cells(0.0),
-                        bottom: Dimension::Cells(0.0),
-                    })
-                    .padding(BoxDimension {
-                        left: Dimension::Cells(0.35),
-                        right: Dimension::Cells(0.35),
-                        top: Dimension::Cells(0.05),
-                        bottom: Dimension::Cells(0.05),
-                    })
-                    .border(BoxDimension::new(Dimension::Pixels(1.)))
-                    .border_corners(Some(Corners {
-                        top_left: SizedPoly {
-                            width: Dimension::Cells(0.35),
-                            height: Dimension::Cells(0.35),
-                            poly: TOP_LEFT_ROUNDED_CORNER,
-                        },
-                        bottom_left: SizedPoly {
-                            width: Dimension::Cells(0.35),
-                            height: Dimension::Cells(0.35),
-                            poly: BOTTOM_LEFT_ROUNDED_CORNER,
-                        },
-                        top_right: SizedPoly {
-                            width: Dimension::Cells(0.35),
-                            height: Dimension::Cells(0.35),
-                            poly: TOP_RIGHT_ROUNDED_CORNER,
-                        },
-                        bottom_right: SizedPoly {
-                            width: Dimension::Cells(0.35),
-                            height: Dimension::Cells(0.35),
-                            poly: BOTTOM_RIGHT_ROUNDED_CORNER,
-                        },
-                    }))
-                    .colors(ElementColors {
-                        border: BorderColor::new(bg.to_linear()),
-                        bg: bg.to_linear().into(),
-                        text: default_fg.to_linear().into(),
-                    })
-            };
+        let tab_chip = |text: &str,
+                        color: Option<&RgbaColor>,
+                        default_bg: RgbaColor,
+                        default_fg: RgbaColor| {
+            let bg = color.cloned().unwrap_or(default_bg);
+            Element::new(&font, ElementContent::Text(text.to_string()))
+                .margin(BoxDimension {
+                    left: Dimension::Cells(0.0),
+                    right: Dimension::Cells(0.35),
+                    top: Dimension::Cells(0.0),
+                    bottom: Dimension::Cells(0.0),
+                })
+                .padding(BoxDimension {
+                    left: Dimension::Cells(0.35),
+                    right: Dimension::Cells(0.35),
+                    top: Dimension::Cells(0.05),
+                    bottom: Dimension::Cells(0.05),
+                })
+                .border(BoxDimension::new(Dimension::Pixels(1.)))
+                .border_corners(Some(Corners {
+                    top_left: SizedPoly {
+                        width: Dimension::Cells(0.35),
+                        height: Dimension::Cells(0.35),
+                        poly: TOP_LEFT_ROUNDED_CORNER,
+                    },
+                    bottom_left: SizedPoly {
+                        width: Dimension::Cells(0.35),
+                        height: Dimension::Cells(0.35),
+                        poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                    },
+                    top_right: SizedPoly {
+                        width: Dimension::Cells(0.35),
+                        height: Dimension::Cells(0.35),
+                        poly: TOP_RIGHT_ROUNDED_CORNER,
+                    },
+                    bottom_right: SizedPoly {
+                        width: Dimension::Cells(0.35),
+                        height: Dimension::Cells(0.35),
+                        poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                    },
+                }))
+                .colors(ElementColors {
+                    border: BorderColor::new(bg.to_linear()),
+                    bg: bg.to_linear().into(),
+                    text: default_fg.to_linear().into(),
+                })
+        };
+
+        let tab_accent_bar = |color: RgbaColor| {
+            Element::new(&font, ElementContent::Text(" ".to_string()))
+                .margin(BoxDimension {
+                    left: if left_side {
+                        Dimension::Cells(0.0)
+                    } else {
+                        Dimension::Cells(0.35)
+                    },
+                    right: if left_side {
+                        Dimension::Cells(0.45)
+                    } else {
+                        Dimension::Cells(0.0)
+                    },
+                    top: Dimension::Cells(0.0),
+                    bottom: Dimension::Cells(0.0),
+                })
+                .padding(BoxDimension {
+                    left: Dimension::Cells(0.0),
+                    right: Dimension::Cells(0.0),
+                    top: Dimension::Cells(0.2),
+                    bottom: Dimension::Cells(0.2),
+                })
+                .min_width(Some(Dimension::Cells(0.22)))
+                .border(BoxDimension::new(Dimension::Pixels(0.)))
+                .border_corners(Some(Corners {
+                    top_left: SizedPoly {
+                        width: Dimension::Cells(0.22),
+                        height: Dimension::Cells(0.22),
+                        poly: TOP_LEFT_ROUNDED_CORNER,
+                    },
+                    bottom_left: SizedPoly {
+                        width: Dimension::Cells(0.22),
+                        height: Dimension::Cells(0.22),
+                        poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                    },
+                    top_right: SizedPoly {
+                        width: Dimension::Cells(0.22),
+                        height: Dimension::Cells(0.22),
+                        poly: TOP_RIGHT_ROUNDED_CORNER,
+                    },
+                    bottom_right: SizedPoly {
+                        width: Dimension::Cells(0.22),
+                        height: Dimension::Cells(0.22),
+                        poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                    },
+                }))
+                .colors(ElementColors {
+                    border: BorderColor::new(color.to_linear()),
+                    bg: color.to_linear().into(),
+                    text: color.to_linear().into(),
+                })
+        };
 
         let tab_item = |item: &TabEntry, tab: &TabInformation, active: bool| {
-            let mut elem = Element::with_line(&font, &item.title, palette)
+            let accent = tab_accent_color(Some(tab));
+            let activity_color = tab_activity_color(Some(tab));
+            let summary_color = tab_summary_color(Some(tab));
+            let activity = tab
+                .activity
+                .as_deref()
+                .or_else(|| tab.metadata.get("agent_hud.activity").map(String::as_str))
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let summary = tab
+                .summary
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let summary_secondary = tab
+                .metadata
+                .get("wezterm.summary_secondary")
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let subtitle = tab
+                .subtitle
+                .as_deref()
+                .or_else(|| tab.metadata.get("agent_hud.subtitle").map(String::as_str));
+            let title_max_width = (content_width - (metrics.cell_size.width as f32 * 3.5))
+                .max(metrics.cell_size.width as f32 * 4.0);
+
+            let mut rows = vec![];
+
+            let mut title_row_kids = vec![];
+            if let Some(color) = accent.clone() {
+                let bar = tab_accent_bar(color);
+                if left_side {
+                    title_row_kids.push(bar);
+                }
+            }
+            if let Some(activity) = activity {
+                title_row_kids.push(tab_activity_marker(
+                    &font,
+                    activity,
+                    activity_color.as_ref(),
+                ));
+            }
+            title_row_kids.push(
+                Element::with_line(&font, &item.title, palette)
+                    .line_height(Some(1.05))
+                    .max_width(Some(Dimension::Pixels(title_max_width))),
+            );
+            if self.config.show_close_tab_button_in_tabs {
+                title_row_kids.push(make_x_button(
+                    &font,
+                    &metrics,
+                    &colors,
+                    tab.tab_index,
+                    active,
+                ));
+            }
+            if let Some(color) = accent.clone() {
+                if !left_side {
+                    title_row_kids.push(tab_accent_bar(color));
+                }
+            }
+            rows.push(
+                Element::new(&font, ElementContent::Children(title_row_kids))
+                    .display(DisplayType::Block)
+                    .line_height(Some(1.05)),
+            );
+
+            let mut meta_kids = vec![];
+            if let Some(badge) = tab.badge.as_deref() {
+                meta_kids.push(tab_chip(
+                    badge,
+                    tab.badge_color
+                        .as_ref()
+                        .and_then(|value| RgbaColor::try_from(value.clone()).ok())
+                        .as_ref(),
+                    colors.new_tab().bg_color,
+                    colors.new_tab().fg_color,
+                ));
+            }
+            if let Some(summary) = summary {
+                meta_kids.push(tab_chip(
+                    summary,
+                    summary_color.as_ref(),
+                    colors.new_tab().bg_color,
+                    colors.new_tab().fg_color,
+                ));
+            }
+            if let Some(summary_secondary) = summary_secondary {
+                meta_kids.push(tab_chip(
+                    summary_secondary,
+                    tab_secondary_summary_color(Some(tab)).as_ref(),
+                    colors.inactive_tab_hover().bg_color,
+                    colors.new_tab().fg_color,
+                ));
+            }
+            if let Some(notification) = tab.notification.as_deref() {
+                meta_kids.push(
+                    tab_chip(
+                        notification,
+                        tab.notification_color
+                            .as_ref()
+                            .and_then(|value| RgbaColor::try_from(value.clone()).ok())
+                            .as_ref(),
+                        RgbaColor::from((209, 77, 65)),
+                        colors.active_tab().fg_color,
+                    )
+                    .float(Float::Right)
+                    .margin(BoxDimension {
+                        left: Dimension::Cells(0.35),
+                        right: Dimension::Cells(0.0),
+                        top: Dimension::Cells(0.0),
+                        bottom: Dimension::Cells(0.0),
+                    }),
+                );
+            }
+            if !meta_kids.is_empty() {
+                rows.push(
+                    Element::new(&font, ElementContent::Children(meta_kids))
+                        .display(DisplayType::Block)
+                        .margin(BoxDimension {
+                            left: Dimension::Cells(0.0),
+                            right: Dimension::Cells(0.0),
+                            top: Dimension::Cells(0.15),
+                            bottom: Dimension::Cells(0.0),
+                        }),
+                );
+            }
+
+            if let Some(subtitle) = subtitle {
+                if !subtitle.is_empty() {
+                    rows.push(
+                        Element::new(&font, ElementContent::Text(subtitle.to_string()))
+                            .display(DisplayType::Block)
+                            .line_height(Some(1.0))
+                            .margin(BoxDimension {
+                                left: Dimension::Cells(0.0),
+                                right: Dimension::Cells(0.0),
+                                top: Dimension::Cells(0.15),
+                                bottom: Dimension::Cells(0.0),
+                            })
+                            .max_width(Some(Dimension::Pixels(
+                                content_width - (metrics.cell_size.width as f32 * 0.5),
+                            ))),
+                    );
+                }
+            }
+
+            let mut elem = Element::new(&font, ElementContent::Children(rows))
                 .display(DisplayType::Block)
                 .item_type(UIItemType::TabBar(item.item.clone()))
                 .margin(BoxDimension {
@@ -631,8 +910,8 @@ impl crate::TermWindow {
                 .padding(BoxDimension {
                     left: Dimension::Cells(0.55),
                     right: Dimension::Cells(0.55),
-                    top: Dimension::Cells(0.3),
-                    bottom: Dimension::Cells(0.3),
+                    top: Dimension::Cells(0.38),
+                    bottom: Dimension::Cells(0.38),
                 })
                 .border(BoxDimension::new(Dimension::Pixels(1.)))
                 .border_corners(Some(if left_side {
@@ -667,20 +946,47 @@ impl crate::TermWindow {
                     }
                 }))
                 .min_width(Some(Dimension::Pixels(content_width)))
-                .max_width(Some(Dimension::Pixels(content_width)));
+                .max_width(Some(Dimension::Pixels(content_width)))
+                .min_height(Some(Dimension::Cells(if subtitle.is_some() {
+                    2.9
+                } else if tab.badge.is_some()
+                    || tab.notification.is_some()
+                    || tab.summary.is_some()
+                    || tab.metadata.contains_key("wezterm.summary_secondary")
+                {
+                    2.25
+                } else {
+                    1.6
+                })));
 
             elem.colors = if active {
                 let active_tab = colors.active_tab();
+                let bg = accent
+                    .as_ref()
+                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.18))
+                    .unwrap_or(active_tab.bg_color);
+                let border = accent
+                    .as_ref()
+                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.38))
+                    .unwrap_or(active_tab.bg_color);
                 ElementColors {
-                    border: BorderColor::new(active_tab.bg_color.to_linear()),
-                    bg: active_tab.bg_color.to_linear().into(),
+                    border: BorderColor::new(border.to_linear()),
+                    bg: bg.to_linear().into(),
                     text: active_tab.fg_color.to_linear().into(),
                 }
             } else {
                 let inactive_tab = colors.inactive_tab();
+                let bg = accent
+                    .as_ref()
+                    .map(|color| blend_color(inactive_tab.bg_color, color.clone(), 0.14))
+                    .unwrap_or(inactive_tab.bg_color);
+                let border = accent
+                    .as_ref()
+                    .map(|color| blend_color(colors.inactive_tab_edge(), color.clone(), 0.46))
+                    .unwrap_or(colors.inactive_tab_edge());
                 ElementColors {
-                    border: BorderColor::new(colors.inactive_tab_edge().to_linear()),
-                    bg: inactive_tab.bg_color.to_linear().into(),
+                    border: BorderColor::new(border.to_linear()),
+                    bg: bg.to_linear().into(),
                     text: inactive_tab.fg_color.to_linear().into(),
                 }
             };
@@ -688,47 +994,15 @@ impl crate::TermWindow {
                 None
             } else {
                 let inactive_tab_hover = colors.inactive_tab_hover();
+                let bg = accent
+                    .as_ref()
+                    .map(|color| blend_color(inactive_tab_hover.bg_color, color.clone(), 0.12))
+                    .unwrap_or(inactive_tab_hover.bg_color);
                 Some(ElementColors {
-                    border: BorderColor::new(inactive_tab_hover.bg_color.to_linear()),
-                    bg: inactive_tab_hover.bg_color.to_linear().into(),
+                    border: BorderColor::new(bg.to_linear()),
+                    bg: bg.to_linear().into(),
                     text: inactive_tab_hover.fg_color.to_linear().into(),
                 })
-            };
-
-            elem.content = match elem.content {
-                ElementContent::Text(_) => unreachable!(),
-                ElementContent::Poly { .. } => unreachable!(),
-                ElementContent::Children(mut kids) => {
-                    if let Some(badge) = tab.badge.as_deref() {
-                        kids.insert(
-                            0,
-                            tab_chip(
-                                badge,
-                                tab.badge_color.as_ref(),
-                                colors.new_tab().bg_color,
-                                colors.new_tab().fg_color,
-                            ),
-                        );
-                    }
-                    if let Some(notification) = tab.notification.as_deref() {
-                        kids.push(tab_chip(
-                            notification,
-                            tab.notification_color.as_ref(),
-                            RgbaColor::from((209, 77, 65)),
-                            colors.active_tab().fg_color,
-                        ));
-                    }
-                    if self.config.show_close_tab_button_in_tabs {
-                        kids.push(make_x_button(
-                            &font,
-                            &metrics,
-                            &colors,
-                            tab.tab_index,
-                            active,
-                        ));
-                    }
-                    ElementContent::Children(kids)
-                }
             };
 
             elem

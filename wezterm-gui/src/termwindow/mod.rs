@@ -6,8 +6,8 @@ use crate::frontend::{front_end, try_front_end};
 use crate::inputmap::InputMap;
 use crate::overlay::{
     confirm_close_pane, confirm_close_tab, confirm_close_window, confirm_quit_program, launcher,
-    start_overlay, start_overlay_pane, CopyModeParams, CopyOverlay, LauncherArgs, LauncherFlags,
-    QuickSelectOverlay,
+    schedule_close_tab_overlay_when_pane_exits, start_overlay, start_overlay_pane, CopyModeParams,
+    CopyOverlay, LauncherArgs, LauncherFlags, QuickSelectOverlay,
 };
 use crate::resize_increment_calculator::ResizeIncrementCalculator;
 use crate::scripting::guiwin::GuiWin;
@@ -30,8 +30,8 @@ use ::wezterm_term::input::{ClickPosition, MouseButton as TMB};
 use ::window::*;
 use anyhow::{anyhow, ensure, Context};
 use config::keyassignment::{
-    Confirmation, KeyAssignment, LauncherActionArgs, PaneDirection, Pattern, PromptInputLine,
-    QuickSelectArguments, RotationDirection, SpawnCommand, SplitSize,
+    CommandOverlay, Confirmation, KeyAssignment, LauncherActionArgs, PaneDirection, Pattern,
+    PromptInputLine, QuickSelectArguments, RotationDirection, SpawnCommand, SplitSize,
 };
 use config::window::WindowLevel;
 use config::{
@@ -46,8 +46,10 @@ use mux::pane::{
 use mux::renderable::RenderableDimensions;
 use mux::tab::{
     PositionedPane, PositionedSplit, SplitDirection, SplitRequest, SplitSize as MuxSplitSize, Tab,
-    TabId, TAB_METADATA_BADGE, TAB_METADATA_BADGE_COLOR, TAB_METADATA_NOTIFICATION,
-    TAB_METADATA_NOTIFICATION_COLOR,
+    TabId, TAB_METADATA_ACCENT_COLOR, TAB_METADATA_ACTIVITY, TAB_METADATA_ACTIVITY_COLOR,
+    TAB_METADATA_BADGE, TAB_METADATA_BADGE_COLOR, TAB_METADATA_NOTIFICATION,
+    TAB_METADATA_NOTIFICATION_COLOR, TAB_METADATA_SUBTITLE, TAB_METADATA_SUMMARY,
+    TAB_METADATA_SUMMARY_COLOR,
 };
 use mux::window::WindowId as MuxWindowId;
 use mux::{Mux, MuxNotification};
@@ -190,6 +192,7 @@ pub struct SemanticZoneCache {
 pub struct OverlayState {
     pub pane: Arc<dyn Pane>,
     pub key_table_state: KeyTableState,
+    pub overlay_id: Option<String>,
 }
 
 #[derive(Default)]
@@ -223,6 +226,12 @@ pub struct TabInformation {
     pub badge_color: Option<String>,
     pub notification: Option<String>,
     pub notification_color: Option<String>,
+    pub summary: Option<String>,
+    pub summary_color: Option<String>,
+    pub accent_color: Option<String>,
+    pub subtitle: Option<String>,
+    pub activity: Option<String>,
+    pub activity_color: Option<String>,
 }
 
 impl UserData for TabInformation {
@@ -259,6 +268,12 @@ impl UserData for TabInformation {
         fields.add_field_method_get("notification_color", |_, this| {
             Ok(this.notification_color.clone())
         });
+        fields.add_field_method_get("summary", |_, this| Ok(this.summary.clone()));
+        fields.add_field_method_get("summary_color", |_, this| Ok(this.summary_color.clone()));
+        fields.add_field_method_get("accent_color", |_, this| Ok(this.accent_color.clone()));
+        fields.add_field_method_get("subtitle", |_, this| Ok(this.subtitle.clone()));
+        fields.add_field_method_get("activity", |_, this| Ok(this.activity.clone()));
+        fields.add_field_method_get("activity_color", |_, this| Ok(this.activity_color.clone()));
         fields.add_field_method_get("window_title", |_, this| {
             let mux = Mux::get();
             let window = mux.get_window(this.window_id).ok_or_else(|| {
@@ -1335,7 +1350,10 @@ impl TermWindow {
                     self.update_title_post_status();
                 }
                 MuxNotification::TabMetadataChanged { .. } => {
+                    self.invalidate_fancy_tab_bar();
+                    self.invalidate_modal();
                     self.update_title_post_status();
+                    window.invalidate();
                 }
                 MuxNotification::PaneAdded(_)
                 | MuxNotification::WorkspaceRenamed { .. }
@@ -2386,6 +2404,88 @@ impl TermWindow {
         promise::spawn::spawn(future).detach();
     }
 
+    fn toggle_command_overlay(&mut self, args: &CommandOverlay) {
+        let mux = Mux::get();
+        let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
+            Some(tab) => tab,
+            None => return,
+        };
+        let tab_id = tab.tab_id();
+        let pane = match self.get_active_pane_no_overlay() {
+            Some(pane) => pane,
+            None => return,
+        };
+
+        let matching_tabs = self.find_tab_overlay_ids(&args.overlay_id);
+        let had_current_overlay = matching_tabs
+            .iter()
+            .any(|existing_tab_id| *existing_tab_id == tab_id);
+        for existing_tab_id in matching_tabs {
+            self.cancel_overlay_for_tab(existing_tab_id, None);
+        }
+        if had_current_overlay {
+            return;
+        }
+
+        let window = match self.window.clone() {
+            Some(window) => window,
+            None => return,
+        };
+        let overlay_id = args.overlay_id.clone();
+        let spawn = args.command.clone();
+        let close_on_process_exit = args.close_on_process_exit;
+        let size = tab.get_size();
+        let pane_id = pane.pane_id();
+
+        promise::spawn::spawn(async move {
+            let (command, cwd) = match crate::spawn::spawn_command_builder(&spawn) {
+                Ok(command) => command,
+                Err(err) => {
+                    log::error!(
+                        "Failed to build command overlay `{}`: {:#}",
+                        overlay_id,
+                        err
+                    );
+                    return;
+                }
+            };
+
+            let pane = match Mux::get()
+                .spawn_pane_for_overlay(pane_id, spawn.domain.clone(), command, cwd, size)
+                .await
+            {
+                Ok(pane) => pane,
+                Err(err) => {
+                    log::error!(
+                        "Failed to spawn command overlay `{}`: {:#}",
+                        overlay_id,
+                        err
+                    );
+                    return;
+                }
+            };
+
+            let window_for_apply = window.clone();
+            window.notify(TermWindowNotif::Apply(Box::new(move |term_window| {
+                let mux = Mux::get();
+                if mux.get_tab(tab_id).is_none() {
+                    mux.remove_pane(pane.pane_id());
+                    return;
+                }
+
+                term_window.assign_overlay_with_id(tab_id, pane.clone(), Some(overlay_id.clone()));
+                if close_on_process_exit {
+                    schedule_close_tab_overlay_when_pane_exits(
+                        window_for_apply.clone(),
+                        tab_id,
+                        pane,
+                    );
+                }
+            })));
+        })
+        .detach();
+    }
+
     fn show_debug_overlay(&mut self) {
         let mux = Mux::get();
         let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
@@ -2686,6 +2786,9 @@ impl TermWindow {
             }
             SpawnCommandInNewWindow(spawn) => {
                 self.spawn_command(spawn, SpawnWhere::NewWindow);
+            }
+            ToggleCommandOverlay(args) => {
+                self.toggle_command_overlay(args);
             }
             SplitHorizontal(spawn) => {
                 log::trace!("SplitHorizontal {:?}", spawn);
@@ -3521,6 +3624,12 @@ impl TermWindow {
                     badge_color: metadata.get(TAB_METADATA_BADGE_COLOR).cloned(),
                     notification: metadata.get(TAB_METADATA_NOTIFICATION).cloned(),
                     notification_color: metadata.get(TAB_METADATA_NOTIFICATION_COLOR).cloned(),
+                    summary: metadata.get(TAB_METADATA_SUMMARY).cloned(),
+                    summary_color: metadata.get(TAB_METADATA_SUMMARY_COLOR).cloned(),
+                    accent_color: metadata.get(TAB_METADATA_ACCENT_COLOR).cloned(),
+                    subtitle: metadata.get(TAB_METADATA_SUBTITLE).cloned(),
+                    activity: metadata.get(TAB_METADATA_ACTIVITY).cloned(),
+                    activity_color: metadata.get(TAB_METADATA_ACTIVITY_COLOR).cloned(),
                     metadata,
                     active_pane: panes
                         .iter()
@@ -3581,6 +3690,21 @@ impl TermWindow {
         self.get_pos_panes_for_tab(&tab)
     }
 
+    fn find_tab_overlay_ids(&self, overlay_id: &str) -> Vec<TabId> {
+        self.tab_state
+            .borrow()
+            .iter()
+            .filter_map(|(tab_id, state)| {
+                state
+                    .overlay
+                    .as_ref()
+                    .and_then(|overlay| overlay.overlay_id.as_deref())
+                    .filter(|candidate| *candidate == overlay_id)
+                    .map(|_| *tab_id)
+            })
+            .collect()
+    }
+
     /// if pane_id.is_none(), removes any overlay for the specified tab.
     /// Otherwise: if the overlay is the specified pane for that tab, remove it.
     fn cancel_overlay_for_tab(&mut self, tab_id: TabId, pane_id: Option<PaneId>) {
@@ -3630,15 +3754,26 @@ impl TermWindow {
         self.pane_state(pane_id).overlay.replace(OverlayState {
             pane,
             key_table_state: KeyTableState::default(),
+            overlay_id: None,
         });
         self.update_title();
     }
 
     pub fn assign_overlay(&mut self, tab_id: TabId, overlay: Arc<dyn Pane>) {
+        self.assign_overlay_with_id(tab_id, overlay, None);
+    }
+
+    pub fn assign_overlay_with_id(
+        &mut self,
+        tab_id: TabId,
+        overlay: Arc<dyn Pane>,
+        overlay_id: Option<String>,
+    ) {
         self.cancel_overlay_for_tab(tab_id, None);
         self.tab_state(tab_id).overlay.replace(OverlayState {
             pane: overlay,
             key_table_state: KeyTableState::default(),
+            overlay_id,
         });
         self.update_title();
     }

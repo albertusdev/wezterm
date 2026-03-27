@@ -4,7 +4,9 @@ use mux::tab::{Tab, TabId};
 use mux::termwiztermtab::{allocate, TermWizTerminal};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use wezterm_term::{TerminalConfiguration, TerminalSize};
+use window::Window;
 
 pub mod confirm;
 pub mod confirm_close_pane;
@@ -88,4 +90,22 @@ where
     });
 
     (tw_tab, Box::pin(future))
+}
+
+pub fn schedule_close_tab_overlay_when_pane_exits(
+    window: Window,
+    tab_id: TabId,
+    pane: Arc<dyn Pane>,
+) {
+    let overlay_pane_id = pane.pane_id();
+    promise::spawn::spawn(async move {
+        loop {
+            if pane.is_dead() {
+                TermWindow::schedule_cancel_overlay(window, tab_id, Some(overlay_pane_id));
+                break;
+            }
+            smol::Timer::after(Duration::from_millis(150)).await;
+        }
+    })
+    .detach();
 }

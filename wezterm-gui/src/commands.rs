@@ -597,6 +597,9 @@ fn spawn_command_from_action(action: &KeyAssignment) -> Option<&SpawnCommand> {
         | SplitVertical(command)
         | SpawnCommandInNewWindow(command)
         | SpawnCommandInNewTab(command) => Some(command),
+        ToggleCommandOverlay(config::keyassignment::CommandOverlay { command, .. }) => {
+            Some(command)
+        }
         _ => None,
     }
 }
@@ -993,6 +996,18 @@ pub fn derive_command_from_key_assignment(action: &KeyAssignment) -> Option<Comm
             args: &[],
             menubar: &[],
             icon: Some("md_open_in_new"),
+        },
+        ToggleCommandOverlay(args) => CommandDef {
+            brief: label_string(
+                action,
+                format!("Toggle command overlay `{}`", args.overlay_id).to_string(),
+            )
+            .into(),
+            doc: format!("Toggle the `{}` command overlay", args.overlay_id).into(),
+            keys: vec![],
+            args: &[ArgType::ActiveWindow],
+            menubar: &[],
+            icon: Some("md_dock_window"),
         },
         ActivateTab(-1) => CommandDef {
             brief: "Activate right-most tab".into(),

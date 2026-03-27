@@ -532,6 +532,15 @@ fn default_message() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, FromDynamic, ToDynamic)]
+pub struct CommandOverlay {
+    pub overlay_id: String,
+    #[dynamic(default)]
+    pub command: SpawnCommand,
+    #[dynamic(default = "crate::default_true")]
+    pub close_on_process_exit: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, FromDynamic, ToDynamic)]
 pub enum KeyAssignment {
     SpawnTab(SpawnTabDomain),
     SpawnWindow,
@@ -577,6 +586,7 @@ pub enum KeyAssignment {
     QuitApplication,
     SpawnCommandInNewTab(SpawnCommand),
     SpawnCommandInNewWindow(SpawnCommand),
+    ToggleCommandOverlay(CommandOverlay),
     SplitHorizontal(SpawnCommand),
     SplitVertical(SpawnCommand),
     ShowLauncher,

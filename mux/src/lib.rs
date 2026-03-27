@@ -1401,6 +1401,59 @@ impl Mux {
 
         Ok((tab, pane, window_id))
     }
+
+    pub async fn spawn_pane_for_overlay(
+        &self,
+        current_pane_id: PaneId,
+        domain: SpawnTabDomain,
+        command: Option<CommandBuilder>,
+        command_dir: Option<String>,
+        size: TerminalSize,
+    ) -> anyhow::Result<Arc<dyn Pane>> {
+        let (current_domain_id, window_id, _) = self
+            .resolve_pane_id(current_pane_id)
+            .ok_or_else(|| anyhow!("pane_id {} invalid", current_pane_id))?;
+
+        let domain = self
+            .resolve_spawn_tab_domain(Some(current_pane_id), &domain)
+            .context("resolve_spawn_tab_domain")?;
+
+        if domain.state() == DomainState::Detached {
+            domain.attach(Some(window_id)).await?;
+        }
+
+        let current_pane = self
+            .get_pane(current_pane_id)
+            .ok_or_else(|| anyhow!("pane_id {} is invalid", current_pane_id))?;
+        let term_config = current_pane.get_config();
+
+        let cwd = self.resolve_cwd(
+            command_dir,
+            if current_domain_id == domain.domain_id() {
+                Some(Arc::clone(&current_pane))
+            } else {
+                None
+            },
+            domain.domain_id(),
+            CachePolicy::FetchImmediate,
+        );
+
+        let pane = domain
+            .spawn_pane(size, command.clone(), cwd.clone())
+            .await
+            .with_context(|| {
+                format!(
+                    "Spawning overlay pane in domain `{}`: {size:?} command={command:?} cwd={cwd:?}",
+                    domain.domain_name()
+                )
+            })?;
+
+        if let Some(config) = term_config {
+            pane.set_config(config);
+        }
+
+        Ok(pane)
+    }
 }
 
 pub struct IdentityHolder {
