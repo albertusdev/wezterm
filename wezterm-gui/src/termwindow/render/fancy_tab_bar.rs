@@ -94,6 +94,14 @@ fn blend_color(base: RgbaColor, tint: RgbaColor, amount: f32) -> RgbaColor {
     RgbaColor::from((mix(br, tr), mix(bg, tg), mix(bb, tb)))
 }
 
+fn transparent_container_colors() -> ElementColors {
+    ElementColors {
+        border: BorderColor::default(),
+        bg: LinearRgba::TRANSPARENT.into(),
+        text: InheritableColor::Inherited,
+    }
+}
+
 fn tab_activity_marker(
     font: &Rc<LoadedFont>,
     activity: &str,
@@ -772,27 +780,30 @@ impl crate::TermWindow {
                 .subtitle
                 .as_deref()
                 .or_else(|| tab.metadata.get("agent_hud.subtitle").map(String::as_str));
+            let inner_content_width =
+                (content_width - (metrics.cell_size.width as f32 * 1.24) - 2.0)
+                    .max(metrics.cell_size.width as f32 * 6.0);
             let close_button_reserve = if self.config.show_close_tab_button_in_tabs {
-                metrics.cell_size.width as f32 * 2.5
+                metrics.cell_size.width as f32 * 1.35
             } else {
                 0.0
             };
             let accent_reserve = if accent.is_some() {
-                metrics.cell_size.width as f32 * 0.8
+                metrics.cell_size.width as f32 * 0.55
             } else {
                 0.0
             };
             let activity_reserve = if activity.is_some() {
-                metrics.cell_size.width as f32 * 0.95
+                metrics.cell_size.width as f32 * 0.7
             } else {
                 0.0
             };
-            let title_max_width = (content_width
+            let title_max_width = (inner_content_width
                 - close_button_reserve
                 - accent_reserve
                 - activity_reserve
-                - (metrics.cell_size.width as f32 * 0.35))
-                .max(metrics.cell_size.width as f32 * 4.0);
+                - (metrics.cell_size.width as f32 * 0.15))
+                .max(metrics.cell_size.width as f32 * 6.0);
 
             let mut rows = vec![];
 
@@ -910,9 +921,7 @@ impl crate::TermWindow {
                                 top: Dimension::Cells(0.15),
                                 bottom: Dimension::Cells(0.0),
                             })
-                            .max_width(Some(Dimension::Pixels(
-                                content_width - (metrics.cell_size.width as f32 * 0.5),
-                            ))),
+                            .max_width(Some(Dimension::Pixels(inner_content_width))),
                     );
                 }
             }
@@ -1061,7 +1070,7 @@ impl crate::TermWindow {
             children.push(
                 Element::new(&font, ElementContent::Children(header))
                     .display(DisplayType::Block)
-                    .colors(bar_colors.clone())
+                    .colors(transparent_container_colors())
                     .padding(BoxDimension {
                         left: Dimension::Cells(0.15),
                         right: Dimension::Cells(0.15),
@@ -1074,7 +1083,7 @@ impl crate::TermWindow {
         children.push(
             Element::new(&font, ElementContent::Children(tabs))
                 .display(DisplayType::Block)
-                .colors(bar_colors.clone())
+                .colors(transparent_container_colors())
                 .padding(BoxDimension {
                     left: Dimension::Cells(0.15),
                     right: Dimension::Cells(0.15),
@@ -1087,7 +1096,7 @@ impl crate::TermWindow {
             children.push(
                 Element::new(&font, ElementContent::Children(footer))
                     .display(DisplayType::Block)
-                    .colors(bar_colors.clone())
+                    .colors(transparent_container_colors())
                     .padding(BoxDimension {
                         left: Dimension::Cells(0.15),
                         right: Dimension::Cells(0.15),
