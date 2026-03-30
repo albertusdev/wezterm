@@ -94,6 +94,55 @@ fn blend_color(base: RgbaColor, tint: RgbaColor, amount: f32) -> RgbaColor {
     RgbaColor::from((mix(br, tr), mix(bg, tg), mix(bb, tb)))
 }
 
+fn srgb_channel_to_linear(channel: u8) -> f32 {
+    let value = channel as f32 / 255.0;
+    if value <= 0.04045 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn relative_luminance(color: RgbaColor) -> f32 {
+    let (r, g, b, _) = color.as_rgba_u8();
+    (0.2126 * srgb_channel_to_linear(r))
+        + (0.7152 * srgb_channel_to_linear(g))
+        + (0.0722 * srgb_channel_to_linear(b))
+}
+
+fn contrast_ratio(left: RgbaColor, right: RgbaColor) -> f32 {
+    let left = relative_luminance(left);
+    let right = relative_luminance(right);
+    let (lighter, darker) = if left >= right {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    (lighter + 0.05) / (darker + 0.05)
+}
+
+fn legible_text_color(bg: RgbaColor, preferred: RgbaColor) -> RgbaColor {
+    if contrast_ratio(bg, preferred) >= 4.5 {
+        return preferred;
+    }
+    let light = RgbaColor::from((238, 243, 255));
+    let dark = RgbaColor::from((17, 20, 28));
+    if contrast_ratio(bg, light) >= contrast_ratio(bg, dark) {
+        light
+    } else {
+        dark
+    }
+}
+
+fn secondary_text_color(bg: RgbaColor, primary: RgbaColor) -> RgbaColor {
+    let candidate = blend_color(primary, bg, 0.34);
+    if contrast_ratio(bg, candidate) >= 3.0 {
+        candidate
+    } else {
+        legible_text_color(bg, candidate)
+    }
+}
+
 fn transparent_container_colors() -> ElementColors {
     ElementColors {
         border: BorderColor::default(),
@@ -104,14 +153,25 @@ fn transparent_container_colors() -> ElementColors {
 
 fn vertical_tab_title_text(tab: &TabInformation) -> String {
     let title = tab.tab_title.trim();
+    let pane_title = tab
+        .active_pane
+        .as_ref()
+        .map(|pane| pane.title.trim())
+        .unwrap_or("");
     let icon = tab.icon.as_deref().map(str::trim).unwrap_or("");
-    if title.is_empty() {
-        return icon.to_string();
-    }
+    let label = if title.is_empty() {
+        if pane_title.is_empty() {
+            "new tab"
+        } else {
+            pane_title
+        }
+    } else {
+        title
+    };
     if icon.is_empty() {
-        return title.to_string();
+        return label.to_string();
     }
-    format!("{icon} {title}")
+    format!("{icon} {label}")
 }
 
 fn tab_activity_marker(
@@ -450,7 +510,14 @@ impl crate::TermWindow {
                         ElementContent::Poly { .. } => unreachable!(),
                         ElementContent::Children(mut kids) => {
                             if self.config.show_close_tab_button_in_tabs {
-                                kids.push(make_x_button(&font, &metrics, &colors, tab_idx, active));
+                                let fg = if active {
+                                    colors.active_tab().fg_color
+                                } else {
+                                    colors.inactive_tab().fg_color
+                                };
+                                kids.push(make_x_button(
+                                    &font, &metrics, &colors, tab_idx, active, fg,
+                                ));
                             }
                             ElementContent::Children(kids)
                         }
@@ -771,6 +838,31 @@ impl crate::TermWindow {
             let accent = tab_accent_color(Some(tab));
             let activity_color = tab_activity_color(Some(tab));
             let summary_color = tab_summary_color(Some(tab));
+            let (card_bg, card_border, preferred_text) = if active {
+                let active_tab = colors.active_tab();
+                let bg = accent
+                    .as_ref()
+                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.18))
+                    .unwrap_or(active_tab.bg_color);
+                let border = accent
+                    .as_ref()
+                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.38))
+                    .unwrap_or(active_tab.bg_color);
+                (bg, border, active_tab.fg_color)
+            } else {
+                let inactive_tab = colors.inactive_tab();
+                let bg = accent
+                    .as_ref()
+                    .map(|color| blend_color(inactive_tab.bg_color, color.clone(), 0.14))
+                    .unwrap_or_else(|| blend_color(inactive_tab.bg_color, bar_bg, 0.18));
+                let border = accent
+                    .as_ref()
+                    .map(|color| blend_color(colors.inactive_tab_edge(), color.clone(), 0.46))
+                    .unwrap_or_else(|| blend_color(colors.inactive_tab_edge(), bar_bg, 0.32));
+                (bg, border, inactive_tab.fg_color)
+            };
+            let title_fg = legible_text_color(card_bg, preferred_text);
+            let subtitle_fg = secondary_text_color(card_bg, title_fg);
             let activity = tab
                 .activity
                 .as_deref()
@@ -835,6 +927,11 @@ impl crate::TermWindow {
             title_row_kids.push(
                 Element::new(&font, ElementContent::Text(title_text))
                     .line_height(Some(1.05))
+                    .colors(ElementColors {
+                        border: BorderColor::default(),
+                        bg: LinearRgba::TRANSPARENT.into(),
+                        text: title_fg.to_linear().into(),
+                    })
                     .max_width(Some(Dimension::Pixels(title_max_width))),
             );
             if self.config.show_close_tab_button_in_tabs {
@@ -844,6 +941,7 @@ impl crate::TermWindow {
                     &colors,
                     tab.tab_index,
                     active,
+                    title_fg,
                 ));
             }
             if let Some(color) = accent.clone() {
@@ -926,6 +1024,11 @@ impl crate::TermWindow {
                         Element::new(&font, ElementContent::Text(subtitle.to_string()))
                             .display(DisplayType::Block)
                             .line_height(Some(1.0))
+                            .colors(ElementColors {
+                                border: BorderColor::default(),
+                                bg: LinearRgba::TRANSPARENT.into(),
+                                text: subtitle_fg.to_linear().into(),
+                            })
                             .margin(BoxDimension {
                                 left: Dimension::Cells(0.0),
                                 right: Dimension::Cells(0.0),
@@ -989,36 +1092,10 @@ impl crate::TermWindow {
                     1.6
                 })));
 
-            elem.colors = if active {
-                let active_tab = colors.active_tab();
-                let bg = accent
-                    .as_ref()
-                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.18))
-                    .unwrap_or(active_tab.bg_color);
-                let border = accent
-                    .as_ref()
-                    .map(|color| blend_color(active_tab.bg_color, color.clone(), 0.38))
-                    .unwrap_or(active_tab.bg_color);
-                ElementColors {
-                    border: BorderColor::new(border.to_linear()),
-                    bg: bg.to_linear().into(),
-                    text: active_tab.fg_color.to_linear().into(),
-                }
-            } else {
-                let inactive_tab = colors.inactive_tab();
-                let bg = accent
-                    .as_ref()
-                    .map(|color| blend_color(inactive_tab.bg_color, color.clone(), 0.14))
-                    .unwrap_or_else(|| blend_color(inactive_tab.bg_color, bar_bg, 0.18));
-                let border = accent
-                    .as_ref()
-                    .map(|color| blend_color(colors.inactive_tab_edge(), color.clone(), 0.46))
-                    .unwrap_or_else(|| blend_color(colors.inactive_tab_edge(), bar_bg, 0.32));
-                ElementColors {
-                    border: BorderColor::new(border.to_linear()),
-                    bg: bg.to_linear().into(),
-                    text: inactive_tab.fg_color.to_linear().into(),
-                }
+            elem.colors = ElementColors {
+                border: BorderColor::new(card_border.to_linear()),
+                bg: card_bg.to_linear().into(),
+                text: title_fg.to_linear().into(),
             };
             elem.hover_colors = if active {
                 None
@@ -1193,6 +1270,7 @@ fn make_x_button(
     colors: &TabBarColors,
     tab_idx: usize,
     active: bool,
+    foreground: RgbaColor,
 ) -> Element {
     Element::new(
         &font,
@@ -1211,6 +1289,11 @@ fn make_x_button(
     .vertical_align(VerticalAlign::Middle)
     .float(Float::Right)
     .item_type(UIItemType::CloseTab(tab_idx))
+    .colors(ElementColors {
+        border: BorderColor::default(),
+        bg: LinearRgba::TRANSPARENT.into(),
+        text: foreground.to_linear().into(),
+    })
     .hover_colors({
         let inactive_tab_hover = colors.inactive_tab_hover();
         let active_tab = colors.active_tab();
