@@ -9,7 +9,6 @@ use crate::utilsprites::RenderMetrics;
 use config::{Dimension, DimensionContext, RgbaColor, TabBarColors, TabBarPosition};
 use std::convert::TryFrom;
 use std::rc::Rc;
-use termwiz::surface::Line;
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
 use window::color::LinearRgba;
@@ -103,37 +102,16 @@ fn transparent_container_colors() -> ElementColors {
     }
 }
 
-fn line_text_only(font: &Rc<LoadedFont>, line: &Line, palette: &ColorPalette) -> Element {
-    let mut content: Vec<Element> = vec![];
-    let mut prior_fg = None;
-
-    for cluster in line.cluster(None) {
-        if let Some(prior) = content.last_mut() {
-            if cluster.attrs.foreground() == prior_fg.unwrap_or(ColorAttribute::Default) {
-                if let ElementContent::Text(text) = &mut prior.content {
-                    text.push_str(&cluster.text);
-                    continue;
-                }
-            }
-        }
-
-        let child = Element::new(font, ElementContent::Text(cluster.text)).colors(ElementColors {
-            border: BorderColor::default(),
-            bg: InheritableColor::Inherited,
-            text: if cluster.attrs.foreground() == ColorAttribute::Default {
-                InheritableColor::Inherited
-            } else {
-                palette
-                    .resolve_fg(cluster.attrs.foreground())
-                    .to_linear()
-                    .into()
-            },
-        });
-        content.push(child);
-        prior_fg.replace(cluster.attrs.foreground());
+fn vertical_tab_title_text(tab: &TabInformation) -> String {
+    let title = tab.tab_title.trim();
+    let icon = tab.icon.as_deref().map(str::trim).unwrap_or("");
+    if title.is_empty() {
+        return icon.to_string();
     }
-
-    Element::new(font, ElementContent::Children(content))
+    if icon.is_empty() {
+        return title.to_string();
+    }
+    format!("{icon} {title}")
 }
 
 fn tab_activity_marker(
@@ -796,7 +774,6 @@ impl crate::TermWindow {
             let activity = tab
                 .activity
                 .as_deref()
-                .or_else(|| tab.metadata.get("agent_hud.activity").map(String::as_str))
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
             let summary = tab
@@ -812,8 +789,7 @@ impl crate::TermWindow {
                 .filter(|value| !value.is_empty());
             let subtitle = tab
                 .subtitle
-                .as_deref()
-                .or_else(|| tab.metadata.get("agent_hud.subtitle").map(String::as_str));
+                .as_deref();
             let inner_content_width =
                 (content_width - (metrics.cell_size.width as f32 * 1.24) - 2.0)
                     .max(metrics.cell_size.width as f32 * 6.0);
@@ -855,8 +831,9 @@ impl crate::TermWindow {
                     activity_color.as_ref(),
                 ));
             }
+            let title_text = vertical_tab_title_text(tab);
             title_row_kids.push(
-                line_text_only(&font, &item.title, palette)
+                Element::new(&font, ElementContent::Text(title_text))
                     .line_height(Some(1.05))
                     .max_width(Some(Dimension::Pixels(title_max_width))),
             );

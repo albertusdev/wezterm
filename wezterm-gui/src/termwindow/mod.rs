@@ -47,7 +47,7 @@ use mux::renderable::RenderableDimensions;
 use mux::tab::{
     PositionedPane, PositionedSplit, SplitDirection, SplitRequest, SplitSize as MuxSplitSize, Tab,
     TabId, TAB_METADATA_ACCENT_COLOR, TAB_METADATA_ACTIVITY, TAB_METADATA_ACTIVITY_COLOR,
-    TAB_METADATA_BADGE, TAB_METADATA_BADGE_COLOR, TAB_METADATA_NOTIFICATION,
+    TAB_METADATA_BADGE, TAB_METADATA_BADGE_COLOR, TAB_METADATA_ICON, TAB_METADATA_NOTIFICATION,
     TAB_METADATA_NOTIFICATION_COLOR, TAB_METADATA_SUBTITLE, TAB_METADATA_SUMMARY,
     TAB_METADATA_SUMMARY_COLOR,
 };
@@ -226,6 +226,7 @@ pub struct TabInformation {
     pub badge_color: Option<String>,
     pub notification: Option<String>,
     pub notification_color: Option<String>,
+    pub icon: Option<String>,
     pub summary: Option<String>,
     pub summary_color: Option<String>,
     pub accent_color: Option<String>,
@@ -268,6 +269,7 @@ impl UserData for TabInformation {
         fields.add_field_method_get("notification_color", |_, this| {
             Ok(this.notification_color.clone())
         });
+        fields.add_field_method_get("icon", |_, this| Ok(this.icon.clone()));
         fields.add_field_method_get("summary", |_, this| Ok(this.summary.clone()));
         fields.add_field_method_get("summary_color", |_, this| Ok(this.summary_color.clone()));
         fields.add_field_method_get("accent_color", |_, this| Ok(this.accent_color.clone()));
@@ -3624,6 +3626,7 @@ impl TermWindow {
                     badge_color: metadata.get(TAB_METADATA_BADGE_COLOR).cloned(),
                     notification: metadata.get(TAB_METADATA_NOTIFICATION).cloned(),
                     notification_color: metadata.get(TAB_METADATA_NOTIFICATION_COLOR).cloned(),
+                    icon: metadata.get(TAB_METADATA_ICON).cloned(),
                     summary: metadata.get(TAB_METADATA_SUMMARY).cloned(),
                     summary_color: metadata.get(TAB_METADATA_SUMMARY_COLOR).cloned(),
                     accent_color: metadata.get(TAB_METADATA_ACCENT_COLOR).cloned(),

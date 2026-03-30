@@ -1014,6 +1014,7 @@ impl super::TermWindow {
         layers: &mut TripleLayerQuadAllocator,
         inherited_colors: Option<&ElementColors>,
     ) -> anyhow::Result<()> {
+        let resolved_bg = self.resolve_bg(colors, inherited_colors);
         let mut top_left_width = 0.;
         let mut top_left_height = 0.;
         let mut top_right_width = 0.;
@@ -1036,19 +1037,20 @@ impl super::TermWindow {
             bottom_right_height = c.bottom_right.height;
 
             if top_left_width > 0. && top_left_height > 0. {
-                self.poly_quad(
+                let mut quad = self.poly_quad(
                     layers,
                     0,
                     element.border_rect.origin,
                     c.top_left.poly,
                     element.border.top as isize,
                     euclid::size2(top_left_width, top_left_height),
-                    colors.border.top,
-                )?
-                .set_grayscale();
+                    LinearRgba::TRANSPARENT,
+                )?;
+                resolved_bg.apply(&mut quad);
+                quad.set_grayscale();
             }
             if top_right_width > 0. && top_right_height > 0. {
-                self.poly_quad(
+                let mut quad = self.poly_quad(
                     layers,
                     0,
                     euclid::point2(
@@ -1058,12 +1060,13 @@ impl super::TermWindow {
                     c.top_right.poly,
                     element.border.top as isize,
                     euclid::size2(top_right_width, top_right_height),
-                    colors.border.top,
-                )?
-                .set_grayscale();
+                    LinearRgba::TRANSPARENT,
+                )?;
+                resolved_bg.apply(&mut quad);
+                quad.set_grayscale();
             }
             if bottom_left_width > 0. && bottom_left_height > 0. {
-                self.poly_quad(
+                let mut quad = self.poly_quad(
                     layers,
                     0,
                     euclid::point2(
@@ -1073,12 +1076,13 @@ impl super::TermWindow {
                     c.bottom_left.poly,
                     element.border.bottom as isize,
                     euclid::size2(bottom_left_width, bottom_left_height),
-                    colors.border.bottom,
-                )?
-                .set_grayscale();
+                    LinearRgba::TRANSPARENT,
+                )?;
+                resolved_bg.apply(&mut quad);
+                quad.set_grayscale();
             }
             if bottom_right_width > 0. && bottom_right_height > 0. {
-                self.poly_quad(
+                let mut quad = self.poly_quad(
                     layers,
                     0,
                     euclid::point2(
@@ -1088,9 +1092,10 @@ impl super::TermWindow {
                     c.bottom_right.poly,
                     element.border.bottom as isize,
                     euclid::size2(bottom_right_width, bottom_right_height),
-                    colors.border.bottom,
-                )?
-                .set_grayscale();
+                    LinearRgba::TRANSPARENT,
+                )?;
+                resolved_bg.apply(&mut quad);
+                quad.set_grayscale();
             }
 
             // Filling the background is more complex because we can't
@@ -1117,7 +1122,7 @@ impl super::TermWindow {
                 ),
                 LinearRgba::TRANSPARENT,
             )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
 
             // The `B` piece
             let mut quad = self.filled_rectangle(
@@ -1131,7 +1136,7 @@ impl super::TermWindow {
                 ),
                 LinearRgba::TRANSPARENT,
             )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
 
             // The `L` piece
             let mut quad = self.filled_rectangle(
@@ -1145,7 +1150,7 @@ impl super::TermWindow {
                 ),
                 LinearRgba::TRANSPARENT,
             )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
 
             // The `R` piece
             let mut quad = self.filled_rectangle(
@@ -1159,7 +1164,7 @@ impl super::TermWindow {
                 ),
                 LinearRgba::TRANSPARENT,
             )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
 
             // The `C` piece
             let mut quad = self.filled_rectangle(
@@ -1175,11 +1180,11 @@ impl super::TermWindow {
                 ),
                 LinearRgba::TRANSPARENT,
             )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
         } else if colors.bg != InheritableColor::Color(LinearRgba::TRANSPARENT) {
             let mut quad =
                 self.filled_rectangle(layers, 0, element.padding, LinearRgba::TRANSPARENT)?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            resolved_bg.apply(&mut quad);
         }
 
         if element.border_rect == element.padding {
@@ -1233,7 +1238,7 @@ impl super::TermWindow {
                 euclid::rect(
                     element.border_rect.max_x() - element.border.right,
                     element.border_rect.min_y() + top_right_height as f32,
-                    element.border.left,
+                    element.border.right,
                     element.border_rect.height() - (top_right_height + bottom_right_height) as f32,
                 ),
                 colors.border.right,

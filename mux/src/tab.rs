@@ -24,6 +24,7 @@ pub const TAB_METADATA_BADGE: &str = "wezterm.badge";
 pub const TAB_METADATA_BADGE_COLOR: &str = "wezterm.badge_color";
 pub const TAB_METADATA_NOTIFICATION: &str = "wezterm.notification";
 pub const TAB_METADATA_NOTIFICATION_COLOR: &str = "wezterm.notification_color";
+pub const TAB_METADATA_ICON: &str = "wezterm.icon";
 pub const TAB_METADATA_SUMMARY: &str = "wezterm.summary";
 pub const TAB_METADATA_SUMMARY_COLOR: &str = "wezterm.summary_color";
 pub const TAB_METADATA_ACCENT_COLOR: &str = "wezterm.accent_color";
