@@ -13,23 +13,41 @@ fn main() {
         // Otherwise we'll derive it from the git information
 
         if let Ok(repo) = git2::Repository::discover(".") {
-            if let Ok(ref_head) = repo.find_reference("HEAD") {
-                let repo_path = repo.path().to_path_buf();
+            let git_dir = repo.path().to_path_buf();
+            let common_dir = repo.commondir().to_path_buf();
+            let work_dir = repo
+                .workdir()
+                .map(|path| path.to_path_buf())
+                .unwrap_or_else(|| {
+                    git_dir
+                        .parent()
+                        .map(|path| path.to_path_buf())
+                        .unwrap_or_else(|| git_dir.clone())
+                });
 
+            for path in [
+                git_dir.join("HEAD"),
+                common_dir.join("HEAD"),
+                common_dir.join("packed-refs"),
+            ] {
+                if path.exists() {
+                    println!("cargo:rerun-if-changed={}", path.display());
+                }
+            }
+
+            if let Ok(ref_head) = repo.find_reference("HEAD") {
                 if let Ok(resolved) = ref_head.resolve() {
                     if let Some(name) = resolved.name() {
-                        let path = repo_path.join(name);
+                        let path = common_dir.join(name);
                         if path.exists() {
-                            println!(
-                                "cargo:rerun-if-changed={}",
-                                path.canonicalize().unwrap().display()
-                            );
+                            println!("cargo:rerun-if-changed={}", path.display());
                         }
                     }
                 }
             }
 
             if let Ok(output) = std::process::Command::new("git")
+                .current_dir(&work_dir)
                 .args(&[
                     "-c",
                     "core.abbrev=8",
