@@ -772,7 +772,26 @@ impl crate::TermWindow {
                 .subtitle
                 .as_deref()
                 .or_else(|| tab.metadata.get("agent_hud.subtitle").map(String::as_str));
-            let title_max_width = (content_width - (metrics.cell_size.width as f32 * 3.5))
+            let close_button_reserve = if self.config.show_close_tab_button_in_tabs {
+                metrics.cell_size.width as f32 * 2.5
+            } else {
+                0.0
+            };
+            let accent_reserve = if accent.is_some() {
+                metrics.cell_size.width as f32 * 0.8
+            } else {
+                0.0
+            };
+            let activity_reserve = if activity.is_some() {
+                metrics.cell_size.width as f32 * 0.95
+            } else {
+                0.0
+            };
+            let title_max_width = (content_width
+                - close_button_reserve
+                - accent_reserve
+                - activity_reserve
+                - (metrics.cell_size.width as f32 * 0.35))
                 .max(metrics.cell_size.width as f32 * 4.0);
 
             let mut rows = vec![];
@@ -813,7 +832,8 @@ impl crate::TermWindow {
             rows.push(
                 Element::new(&font, ElementContent::Children(title_row_kids))
                     .display(DisplayType::Block)
-                    .line_height(Some(1.05)),
+                    .line_height(Some(1.05))
+                    .min_width(Some(Dimension::Percent(1.))),
             );
 
             let mut meta_kids = vec![];
@@ -868,6 +888,7 @@ impl crate::TermWindow {
                 rows.push(
                     Element::new(&font, ElementContent::Children(meta_kids))
                         .display(DisplayType::Block)
+                        .min_width(Some(Dimension::Percent(1.)))
                         .margin(BoxDimension {
                             left: Dimension::Cells(0.0),
                             right: Dimension::Cells(0.0),
@@ -900,37 +921,37 @@ impl crate::TermWindow {
                 .display(DisplayType::Block)
                 .item_type(UIItemType::TabBar(item.item.clone()))
                 .margin(BoxDimension {
-                    left: Dimension::Cells(0.2),
-                    right: Dimension::Cells(0.2),
-                    top: Dimension::Cells(0.15),
+                    left: Dimension::Cells(0.28),
+                    right: Dimension::Cells(0.28),
+                    top: Dimension::Cells(0.18),
                     bottom: Dimension::Cells(0.0),
                 })
                 .padding(BoxDimension {
-                    left: Dimension::Cells(0.55),
-                    right: Dimension::Cells(0.55),
-                    top: Dimension::Cells(0.38),
-                    bottom: Dimension::Cells(0.38),
+                    left: Dimension::Cells(0.62),
+                    right: Dimension::Cells(0.62),
+                    top: Dimension::Cells(0.42),
+                    bottom: Dimension::Cells(0.42),
                 })
                 .border(BoxDimension::new(Dimension::Pixels(1.)))
                 .border_corners(Some(Corners {
                     top_left: SizedPoly {
-                        width: Dimension::Cells(0.5),
-                        height: Dimension::Cells(0.5),
+                        width: Dimension::Cells(0.7),
+                        height: Dimension::Cells(0.7),
                         poly: TOP_LEFT_ROUNDED_CORNER,
                     },
                     bottom_left: SizedPoly {
-                        width: Dimension::Cells(0.5),
-                        height: Dimension::Cells(0.5),
+                        width: Dimension::Cells(0.7),
+                        height: Dimension::Cells(0.7),
                         poly: BOTTOM_LEFT_ROUNDED_CORNER,
                     },
                     top_right: SizedPoly {
-                        width: Dimension::Cells(0.5),
-                        height: Dimension::Cells(0.5),
+                        width: Dimension::Cells(0.7),
+                        height: Dimension::Cells(0.7),
                         poly: TOP_RIGHT_ROUNDED_CORNER,
                     },
                     bottom_right: SizedPoly {
-                        width: Dimension::Cells(0.5),
-                        height: Dimension::Cells(0.5),
+                        width: Dimension::Cells(0.7),
+                        height: Dimension::Cells(0.7),
                         poly: BOTTOM_RIGHT_ROUNDED_CORNER,
                     },
                 }))
