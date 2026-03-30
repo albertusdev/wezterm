@@ -564,23 +564,21 @@ impl crate::TermWindow {
             - self.get_os_border().top.get() as f32
             - self.get_os_border().bottom.get() as f32;
         let content_width = (tab_bar_width - metrics.cell_size.width as f32).max(0.);
+        let bar_bg = if self.focused.is_some() {
+            self.config.window_frame.active_titlebar_bg
+        } else {
+            self.config.window_frame.inactive_titlebar_bg
+        };
+        let bar_fg = if self.focused.is_some() {
+            self.config.window_frame.active_titlebar_fg
+        } else {
+            self.config.window_frame.inactive_titlebar_fg
+        };
 
         let bar_colors = ElementColors {
             border: BorderColor::default(),
-            bg: if self.focused.is_some() {
-                self.config.window_frame.active_titlebar_bg
-            } else {
-                self.config.window_frame.inactive_titlebar_bg
-            }
-            .to_linear()
-            .into(),
-            text: if self.focused.is_some() {
-                self.config.window_frame.active_titlebar_fg
-            } else {
-                self.config.window_frame.inactive_titlebar_fg
-            }
-            .to_linear()
-            .into(),
+            bg: bar_bg.to_linear().into(),
+            text: bar_fg.to_linear().into(),
         };
 
         let status_item = |item: &TabEntry| {
@@ -914,36 +912,27 @@ impl crate::TermWindow {
                     bottom: Dimension::Cells(0.38),
                 })
                 .border(BoxDimension::new(Dimension::Pixels(1.)))
-                .border_corners(Some(if left_side {
-                    Corners {
-                        top_left: SizedPoly::none(),
-                        bottom_left: SizedPoly::none(),
-                        top_right: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: TOP_RIGHT_ROUNDED_CORNER,
-                        },
-                        bottom_right: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: BOTTOM_RIGHT_ROUNDED_CORNER,
-                        },
-                    }
-                } else {
-                    Corners {
-                        top_left: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: TOP_LEFT_ROUNDED_CORNER,
-                        },
-                        bottom_left: SizedPoly {
-                            width: Dimension::Cells(0.5),
-                            height: Dimension::Cells(0.5),
-                            poly: BOTTOM_LEFT_ROUNDED_CORNER,
-                        },
-                        top_right: SizedPoly::none(),
-                        bottom_right: SizedPoly::none(),
-                    }
+                .border_corners(Some(Corners {
+                    top_left: SizedPoly {
+                        width: Dimension::Cells(0.5),
+                        height: Dimension::Cells(0.5),
+                        poly: TOP_LEFT_ROUNDED_CORNER,
+                    },
+                    bottom_left: SizedPoly {
+                        width: Dimension::Cells(0.5),
+                        height: Dimension::Cells(0.5),
+                        poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                    },
+                    top_right: SizedPoly {
+                        width: Dimension::Cells(0.5),
+                        height: Dimension::Cells(0.5),
+                        poly: TOP_RIGHT_ROUNDED_CORNER,
+                    },
+                    bottom_right: SizedPoly {
+                        width: Dimension::Cells(0.5),
+                        height: Dimension::Cells(0.5),
+                        poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                    },
                 }))
                 .min_width(Some(Dimension::Pixels(content_width)))
                 .max_width(Some(Dimension::Pixels(content_width)))
@@ -979,11 +968,11 @@ impl crate::TermWindow {
                 let bg = accent
                     .as_ref()
                     .map(|color| blend_color(inactive_tab.bg_color, color.clone(), 0.14))
-                    .unwrap_or(inactive_tab.bg_color);
+                    .unwrap_or_else(|| blend_color(inactive_tab.bg_color, bar_bg, 0.18));
                 let border = accent
                     .as_ref()
                     .map(|color| blend_color(colors.inactive_tab_edge(), color.clone(), 0.46))
-                    .unwrap_or(colors.inactive_tab_edge());
+                    .unwrap_or_else(|| blend_color(colors.inactive_tab_edge(), bar_bg, 0.32));
                 ElementColors {
                     border: BorderColor::new(border.to_linear()),
                     bg: bg.to_linear().into(),
@@ -997,9 +986,9 @@ impl crate::TermWindow {
                 let bg = accent
                     .as_ref()
                     .map(|color| blend_color(inactive_tab_hover.bg_color, color.clone(), 0.12))
-                    .unwrap_or(inactive_tab_hover.bg_color);
+                    .unwrap_or_else(|| blend_color(inactive_tab_hover.bg_color, bar_bg, 0.14));
                 Some(ElementColors {
-                    border: BorderColor::new(bg.to_linear()),
+                    border: BorderColor::new(blend_color(bg, bar_bg, 0.2).to_linear()),
                     bg: bg.to_linear().into(),
                     text: inactive_tab_hover.fg_color.to_linear().into(),
                 })
