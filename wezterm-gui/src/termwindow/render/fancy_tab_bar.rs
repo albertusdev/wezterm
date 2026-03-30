@@ -9,6 +9,7 @@ use crate::utilsprites::RenderMetrics;
 use config::{Dimension, DimensionContext, RgbaColor, TabBarColors, TabBarPosition};
 use std::convert::TryFrom;
 use std::rc::Rc;
+use termwiz::surface::Line;
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
 use window::color::LinearRgba;
@@ -100,6 +101,39 @@ fn transparent_container_colors() -> ElementColors {
         bg: LinearRgba::TRANSPARENT.into(),
         text: InheritableColor::Inherited,
     }
+}
+
+fn line_text_only(font: &Rc<LoadedFont>, line: &Line, palette: &ColorPalette) -> Element {
+    let mut content: Vec<Element> = vec![];
+    let mut prior_fg = None;
+
+    for cluster in line.cluster(None) {
+        if let Some(prior) = content.last_mut() {
+            if cluster.attrs.foreground() == prior_fg.unwrap_or(ColorAttribute::Default) {
+                if let ElementContent::Text(text) = &mut prior.content {
+                    text.push_str(&cluster.text);
+                    continue;
+                }
+            }
+        }
+
+        let child = Element::new(font, ElementContent::Text(cluster.text)).colors(ElementColors {
+            border: BorderColor::default(),
+            bg: InheritableColor::Inherited,
+            text: if cluster.attrs.foreground() == ColorAttribute::Default {
+                InheritableColor::Inherited
+            } else {
+                palette
+                    .resolve_fg(cluster.attrs.foreground())
+                    .to_linear()
+                    .into()
+            },
+        });
+        content.push(child);
+        prior_fg.replace(cluster.attrs.foreground());
+    }
+
+    Element::new(font, ElementContent::Children(content))
 }
 
 fn tab_activity_marker(
@@ -822,7 +856,7 @@ impl crate::TermWindow {
                 ));
             }
             title_row_kids.push(
-                Element::with_line(&font, &item.title, palette)
+                line_text_only(&font, &item.title, palette)
                     .line_height(Some(1.05))
                     .max_width(Some(Dimension::Pixels(title_max_width))),
             );

@@ -1,5 +1,5 @@
 use crate::termwindow::{PaneInformation, TabInformation, UIItem, UIItemType};
-use config::{ConfigHandle, TabBarColors};
+use config::{ConfigHandle, TabBarColors, TabBarPosition};
 use finl_unicode::grapheme_clusters::Graphemes;
 use mlua::FromLua;
 use termwiz::cell::{unicode_column_width, Cell, CellAttributes};
@@ -40,6 +40,14 @@ pub struct TabEntry {
 struct TitleText {
     items: Vec<FormatItem>,
     len: usize,
+}
+
+fn uses_unclamped_vertical_fancy_titles(config: &ConfigHandle) -> bool {
+    config.use_fancy_tab_bar
+        && matches!(
+            config.resolved_tab_bar_position(),
+            TabBarPosition::Left | TabBarPosition::Right
+        )
 }
 
 fn call_format_tab_title(
@@ -377,6 +385,11 @@ impl TabBarState {
 
         let mut active_tab_no = 0;
 
+        let formatted_title_width = if uses_unclamped_vertical_fancy_titles(config) {
+            usize::MAX
+        } else {
+            config.tab_max_width
+        };
         let tab_titles: Vec<TitleText> = if config.show_tabs_in_tab_bar {
             tab_info
                 .iter()
@@ -390,7 +403,7 @@ impl TabBarState {
                         pane_info,
                         config,
                         false,
-                        config.tab_max_width,
+                        formatted_title_width,
                     )
                 })
                 .collect()
@@ -408,8 +421,12 @@ impl TabBarState {
         } else {
             // We need to clamp the length to balance them out
             available_cells / number_of_tabs
-        }
-        .min(config.tab_max_width);
+        };
+        let tab_width_max = if uses_unclamped_vertical_fancy_titles(config) {
+            tab_width_max
+        } else {
+            tab_width_max.min(config.tab_max_width)
+        };
 
         let mut line = Line::with_width(0, SEQ_ZERO);
 
