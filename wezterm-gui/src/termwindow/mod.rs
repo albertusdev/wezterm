@@ -188,6 +188,7 @@ struct TabDragState {
     tab_id: TabId,
     start_event: MouseEvent,
     started: bool,
+    target_idx: usize,
 }
 
 #[derive(Clone, Default)]

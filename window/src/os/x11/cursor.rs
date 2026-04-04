@@ -15,6 +15,7 @@ use xcb::Xid;
 
 // X11 classic Cursor glyphs
 pub const HAND1: u16 = 58;
+pub const FLEUR: u16 = 52;
 pub const SB_H_DOUBLE_ARROW: u16 = 108;
 pub const SB_V_DOUBLE_ARROW: u16 = 116;
 pub const TOP_LEFT_ARROW: u16 = 132;
@@ -314,6 +315,10 @@ impl CursorInfo {
         let names: &[&str] = match cursor.unwrap_or(MouseCursor::Arrow) {
             MouseCursor::Arrow => &["top_left_arrow", "left_ptr"],
             MouseCursor::Hand => &["hand2"],
+            MouseCursor::OpenHand => &["openhand", "grab", "hand2"],
+            MouseCursor::ClosedHand => &["closedhand", "grabbing", "hand2"],
+            MouseCursor::Move => &["move", "fleur", "hand2"],
+            MouseCursor::NotAllowed => &["not-allowed", "crossed_circle", "circle"],
             MouseCursor::Text => &["xterm"],
             MouseCursor::SizeUpDown => &["sb_v_double_arrow"],
             MouseCursor::SizeLeftRight => &["sb_h_double_arrow"],
@@ -373,6 +378,10 @@ impl CursorInfo {
             // <https://docs.rs/xcb-util/0.3.0/src/xcb_util/cursor.rs.html>
             MouseCursor::Arrow => TOP_LEFT_ARROW,
             MouseCursor::Hand => HAND1,
+            MouseCursor::OpenHand => HAND1,
+            MouseCursor::ClosedHand => HAND1,
+            MouseCursor::Move => FLEUR,
+            MouseCursor::NotAllowed => TOP_LEFT_ARROW,
             MouseCursor::Text => XTERM,
             MouseCursor::SizeUpDown => SB_V_DOUBLE_ARROW,
             MouseCursor::SizeLeftRight => SB_H_DOUBLE_ARROW,

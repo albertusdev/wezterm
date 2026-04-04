@@ -68,6 +68,10 @@ pub type ScreenRect = euclid::Rect<isize, ScreenPixelUnit>;
 pub enum MouseCursor {
     Arrow,
     Hand,
+    OpenHand,
+    ClosedHand,
+    Move,
+    NotAllowed,
     Text,
     SizeUpDown,
     SizeLeftRight,

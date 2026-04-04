@@ -252,7 +252,22 @@ impl super::TermWindow {
                     // Completed a window drag
                     return;
                 }
-                if press == &MousePress::Left && self.tab_drag.take().is_some() {
+                if press == &MousePress::Left {
+                    if let Some(tab_drag) = self.tab_drag.take() {
+                        if tab_drag.started {
+                            if let Err(err) =
+                                self.move_tab_by_id(tab_drag.tab_id, tab_drag.target_idx)
+                            {
+                                log::error!(
+                                    "while committing dragged tab {}: {err:#}",
+                                    tab_drag.tab_id
+                                );
+                            }
+                            self.invalidate_fancy_tab_bar();
+                            context.invalidate();
+                        }
+                        context.set_cursor(Some(MouseCursor::OpenHand));
+                    }
                     // Completed a tab drag (or click-hold on a tab)
                     return;
                 }
@@ -542,29 +557,30 @@ impl super::TermWindow {
         event: MouseEvent,
         context: &dyn WindowOps,
     ) {
+        let was_started = tab_drag.started;
+        let prior_target = tab_drag.target_idx;
+
         if !tab_drag.started {
             tab_drag.started = has_tab_drag_started(&tab_drag.start_event, &event);
         }
 
         if tab_drag.started {
+            context.set_cursor(Some(MouseCursor::ClosedHand));
             let axis = self.tab_drag_axis();
             let tab_targets = self.current_tab_hit_targets();
-            let target_idx = compute_target_tab_idx(
+            tab_drag.target_idx = compute_target_tab_idx(
                 &tab_targets,
                 tab_drag.tab_id,
                 axis,
                 axis.pointer_coord(&event),
             );
 
-            if let Err(err) = self.move_tab_by_id(tab_drag.tab_id, target_idx) {
-                log::error!("while dragging tab {}: {err:#}", tab_drag.tab_id);
-                return;
+            if !was_started || prior_target != tab_drag.target_idx {
+                self.invalidate_fancy_tab_bar();
+                context.invalidate();
             }
-
-            // Recompute the fancy tab bar layout from the new mux order before
-            // the next drag sample so vertical hit targets stay in sync.
-            self.invalidate_fancy_tab_bar();
-            context.invalidate();
+        } else {
+            context.set_cursor(Some(MouseCursor::OpenHand));
         }
 
         self.tab_drag.replace(tab_drag);
@@ -690,6 +706,20 @@ impl super::TermWindow {
         event: MouseEvent,
         context: &dyn WindowOps,
     ) {
+        if matches!(item, TabBarItem::Tab { .. }) {
+            let cursor = if self
+                .tab_drag
+                .as_ref()
+                .map(|drag| drag.started)
+                .unwrap_or(false)
+            {
+                MouseCursor::ClosedHand
+            } else {
+                MouseCursor::OpenHand
+            };
+            context.set_cursor(Some(cursor));
+        }
+
         match event.kind {
             WMEK::Press(MousePress::Left) => match item {
                 TabBarItem::Tab {
@@ -700,6 +730,7 @@ impl super::TermWindow {
                         tab_id,
                         start_event: event,
                         started: false,
+                        target_idx: tab_idx,
                     });
                 }
                 TabBarItem::NewTabButton { .. } => {

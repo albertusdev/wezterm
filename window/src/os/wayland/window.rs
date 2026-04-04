@@ -980,6 +980,10 @@ impl WaylandWindowInner {
                     match cursor {
                         MouseCursor::Arrow => CursorIcon::Default,
                         MouseCursor::Hand => CursorIcon::Pointer,
+                        MouseCursor::OpenHand => CursorIcon::Grab,
+                        MouseCursor::ClosedHand => CursorIcon::Grabbing,
+                        MouseCursor::Move => CursorIcon::Move,
+                        MouseCursor::NotAllowed => CursorIcon::NotAllowed,
                         MouseCursor::SizeUpDown => CursorIcon::NsResize,
                         MouseCursor::SizeLeftRight => CursorIcon::EwResize,
                         MouseCursor::Text => CursorIcon::Text,

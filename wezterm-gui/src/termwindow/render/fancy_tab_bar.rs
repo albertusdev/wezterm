@@ -151,6 +151,91 @@ fn transparent_container_colors() -> ElementColors {
     }
 }
 
+fn drag_indicator_element(
+    font: &Rc<LoadedFont>,
+    color: RgbaColor,
+    vertical: bool,
+) -> Element {
+    let mut element = Element::new(font, ElementContent::Text(" ".to_string()))
+        .border(BoxDimension::new(Dimension::Pixels(0.)))
+        .colors(ElementColors {
+            border: BorderColor::new(color.to_linear()),
+            bg: color.to_linear().into(),
+            text: color.to_linear().into(),
+        });
+
+    if vertical {
+        element = element
+            .display(DisplayType::Block)
+            .margin(BoxDimension {
+                left: Dimension::Cells(0.8),
+                right: Dimension::Cells(0.8),
+                top: Dimension::Cells(0.12),
+                bottom: Dimension::Cells(0.12),
+            })
+            .min_width(Some(Dimension::Percent(1.0)))
+            .min_height(Some(Dimension::Cells(0.16)))
+            .border_corners(Some(Corners {
+                top_left: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: TOP_LEFT_ROUNDED_CORNER,
+                },
+                bottom_left: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                },
+                top_right: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: TOP_RIGHT_ROUNDED_CORNER,
+                },
+                bottom_right: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                },
+            }));
+    } else {
+        element = element
+            .display(DisplayType::Block)
+            .margin(BoxDimension {
+                left: Dimension::Cells(0.15),
+                right: Dimension::Cells(0.15),
+                top: Dimension::Cells(0.32),
+                bottom: Dimension::Cells(0.2),
+            })
+            .min_width(Some(Dimension::Cells(0.16)))
+            .max_width(Some(Dimension::Cells(0.16)))
+            .min_height(Some(Dimension::Cells(1.3)))
+            .border_corners(Some(Corners {
+                top_left: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: TOP_LEFT_ROUNDED_CORNER,
+                },
+                bottom_left: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: BOTTOM_LEFT_ROUNDED_CORNER,
+                },
+                top_right: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: TOP_RIGHT_ROUNDED_CORNER,
+                },
+                bottom_right: SizedPoly {
+                    width: Dimension::Cells(0.16),
+                    height: Dimension::Cells(0.16),
+                    poly: BOTTOM_RIGHT_ROUNDED_CORNER,
+                },
+            }));
+    }
+
+    element
+}
+
 fn vertical_tab_title_text(tab: &TabInformation) -> String {
     let title = tab.tab_title.trim();
     let pane_title = tab
@@ -202,6 +287,13 @@ impl crate::TermWindow {
         self.fancy_tab_bar.take();
     }
 
+    fn active_tab_drag_preview(&self) -> Option<(mux::tab::TabId, usize)> {
+        self.tab_drag
+            .as_ref()
+            .filter(|drag| drag.started)
+            .map(|drag| (drag.tab_id, drag.target_idx))
+    }
+
     pub fn build_fancy_tab_bar(&self, palette: &ColorPalette) -> anyhow::Result<ComputedElement> {
         let position = self.config.resolved_tab_bar_position();
         if position.is_vertical() {
@@ -220,6 +312,16 @@ impl crate::TermWindow {
             .and_then(|c| c.tab_bar.as_ref())
             .cloned()
             .unwrap_or_else(TabBarColors::default);
+        let drag_preview = self.active_tab_drag_preview();
+        let dragged_tab_id = drag_preview.map(|(tab_id, _)| tab_id);
+        let drag_indicator_color = dragged_tab_id
+            .and_then(|tab_id| {
+                tab_info
+                    .iter()
+                    .find(|tab| tab.tab_id == tab_id)
+                    .and_then(|tab| tab_accent_color(Some(tab)))
+            })
+            .unwrap_or_else(|| colors.active_tab().fg_color);
 
         let mut left_status = vec![];
         let mut left_eles = vec![];
@@ -489,11 +591,23 @@ impl crate::TermWindow {
             );
         }
 
+        let mut seen_other_tabs = 0usize;
+        let mut inserted_indicator = false;
         for item in items {
             match item.item {
                 TabBarItem::LeftStatus => left_status.push(item_to_elem(item)),
                 TabBarItem::None | TabBarItem::RightStatus => right_eles.push(item_to_elem(item)),
                 TabBarItem::WindowButton(_) => {
+                    if let Some((_, target_idx)) = drag_preview {
+                        if !inserted_indicator && target_idx == seen_other_tabs {
+                            left_eles.push(drag_indicator_element(
+                                &font,
+                                drag_indicator_color,
+                                false,
+                            ));
+                            inserted_indicator = true;
+                        }
+                    }
                     if self.config.integrated_title_button_alignment
                         == IntegratedTitleButtonAlignment::Left
                     {
@@ -503,8 +617,21 @@ impl crate::TermWindow {
                     }
                 }
                 TabBarItem::Tab {
-                    tab_idx, active, ..
+                    tab_id,
+                    tab_idx,
+                    active,
                 } => {
+                    if let Some((dragged_id, target_idx)) = drag_preview {
+                        if tab_id != dragged_id && !inserted_indicator && target_idx == seen_other_tabs
+                        {
+                            left_eles.push(drag_indicator_element(
+                                &font,
+                                drag_indicator_color,
+                                false,
+                            ));
+                            inserted_indicator = true;
+                        }
+                    }
                     let mut elem = item_to_elem(item);
                     elem.max_width = Some(Dimension::Pixels(max_tab_width));
                     elem.content = match elem.content {
@@ -525,8 +652,32 @@ impl crate::TermWindow {
                         }
                     };
                     left_eles.push(elem);
+                    if dragged_tab_id != Some(tab_id) {
+                        seen_other_tabs += 1;
+                    }
                 }
-                _ => left_eles.push(item_to_elem(item)),
+                _ => {
+                    if let Some((_, target_idx)) = drag_preview {
+                        if !inserted_indicator && target_idx == seen_other_tabs {
+                            left_eles.push(drag_indicator_element(
+                                &font,
+                                drag_indicator_color,
+                                false,
+                            ));
+                            inserted_indicator = true;
+                        }
+                    }
+                    left_eles.push(item_to_elem(item));
+                }
+            }
+        }
+        if let Some((_, target_idx)) = drag_preview {
+            if !inserted_indicator && target_idx == seen_other_tabs {
+                left_eles.push(drag_indicator_element(
+                    &font,
+                    drag_indicator_color,
+                    false,
+                ));
             }
         }
 
@@ -648,6 +799,16 @@ impl crate::TermWindow {
             .and_then(|c| c.tab_bar.as_ref())
             .cloned()
             .unwrap_or_else(TabBarColors::default);
+        let drag_preview = self.active_tab_drag_preview();
+        let dragged_tab_id = drag_preview.map(|(tab_id, _)| tab_id);
+        let drag_indicator_color = dragged_tab_id
+            .and_then(|tab_id| {
+                tab_info
+                    .iter()
+                    .find(|tab| tab.tab_id == tab_id)
+                    .and_then(|tab| tab_accent_color(Some(tab)))
+            })
+            .unwrap_or_else(|| colors.active_tab().fg_color);
         let left_side = position.is_left();
         let available_height = self.dimensions.pixel_height as f32
             - self.get_os_border().top.get() as f32
@@ -1118,6 +1279,8 @@ impl crate::TermWindow {
         let mut header = vec![];
         let mut tabs = vec![];
         let mut footer = vec![];
+        let mut seen_other_tabs = 0usize;
+        let mut inserted_indicator = false;
 
         for item in items {
             match item.item {
@@ -1146,9 +1309,37 @@ impl crate::TermWindow {
                 }
                 TabBarItem::Tab {
                     tab_idx, active, ..
-                } => tabs.push(tab_item(item, &tab_info[tab_idx], active)),
+                } => {
+                    let tab_id = tab_info[tab_idx].tab_id;
+                    if let Some((_, target_idx)) = drag_preview {
+                        if !inserted_indicator && target_idx == seen_other_tabs {
+                            tabs.push(drag_indicator_element(
+                                &font,
+                                drag_indicator_color,
+                                true,
+                            ));
+                            inserted_indicator = true;
+                        }
+                    }
+
+                    tabs.push(tab_item(item, &tab_info[tab_idx], active));
+
+                    if dragged_tab_id != Some(tab_id) {
+                        seen_other_tabs += 1;
+                    }
+                }
                 TabBarItem::NewTabButton => footer.push(new_tab_item(item)),
                 TabBarItem::None => {}
+            }
+        }
+
+        if let Some((_, target_idx)) = drag_preview {
+            if !inserted_indicator && target_idx == seen_other_tabs {
+                tabs.push(drag_indicator_element(
+                    &font,
+                    drag_indicator_color,
+                    true,
+                ));
             }
         }
 

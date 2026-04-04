@@ -1216,8 +1216,12 @@ impl WindowInner {
                 // that we don't know about.
                 let instance: id = match cursor {
                     MouseCursor::Arrow => msg_send![ns_cursor_cls, arrowCursor],
-                    MouseCursor::Text => msg_send![ns_cursor_cls, IBeamCursor],
                     MouseCursor::Hand => msg_send![ns_cursor_cls, pointingHandCursor],
+                    MouseCursor::OpenHand => msg_send![ns_cursor_cls, openHandCursor],
+                    MouseCursor::ClosedHand => msg_send![ns_cursor_cls, closedHandCursor],
+                    MouseCursor::Move => msg_send![ns_cursor_cls, closedHandCursor],
+                    MouseCursor::NotAllowed => msg_send![ns_cursor_cls, operationNotAllowedCursor],
+                    MouseCursor::Text => msg_send![ns_cursor_cls, IBeamCursor],
                     MouseCursor::SizeUpDown => msg_send![ns_cursor_cls, resizeUpDownCursor],
                     MouseCursor::SizeLeftRight => msg_send![ns_cursor_cls, resizeLeftRightCursor],
                 };

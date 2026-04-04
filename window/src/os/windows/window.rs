@@ -1721,6 +1721,10 @@ fn apply_mouse_cursor(cursor: Option<MouseCursor>) {
                 match cursor {
                     MouseCursor::Arrow => IDC_ARROW,
                     MouseCursor::Hand => IDC_HAND,
+                    MouseCursor::OpenHand => IDC_HAND,
+                    MouseCursor::ClosedHand => IDC_HAND,
+                    MouseCursor::Move => IDC_SIZEALL,
+                    MouseCursor::NotAllowed => IDC_NO,
                     MouseCursor::Text => IDC_IBEAM,
                     MouseCursor::SizeUpDown => IDC_SIZENS,
                     MouseCursor::SizeLeftRight => IDC_SIZEWE,
