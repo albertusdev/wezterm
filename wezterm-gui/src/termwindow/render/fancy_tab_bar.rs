@@ -502,7 +502,9 @@ impl crate::TermWindow {
                         right_eles.push(item_to_elem(item))
                     }
                 }
-                TabBarItem::Tab { tab_idx, active } => {
+                TabBarItem::Tab {
+                    tab_idx, active, ..
+                } => {
                     let mut elem = item_to_elem(item);
                     elem.max_width = Some(Dimension::Pixels(max_tab_width));
                     elem.content = match elem.content {
@@ -879,9 +881,7 @@ impl crate::TermWindow {
                 .map(String::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
-            let subtitle = tab
-                .subtitle
-                .as_deref();
+            let subtitle = tab.subtitle.as_deref();
             let inner_content_width =
                 (content_width - (metrics.cell_size.width as f32 * 1.24) - 2.0)
                     .max(metrics.cell_size.width as f32 * 6.0);
@@ -1144,9 +1144,9 @@ impl crate::TermWindow {
                         }),
                     );
                 }
-                TabBarItem::Tab { tab_idx, active } => {
-                    tabs.push(tab_item(item, &tab_info[tab_idx], active))
-                }
+                TabBarItem::Tab {
+                    tab_idx, active, ..
+                } => tabs.push(tab_item(item, &tab_info[tab_idx], active)),
                 TabBarItem::NewTabButton => footer.push(new_tab_item(item)),
                 TabBarItem::None => {}
             }

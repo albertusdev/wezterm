@@ -24,7 +24,75 @@ use wezterm_dynamic::{Object, ToDynamic, Value};
 use wezterm_term::input::{MouseButton, MouseEventKind as TMEK};
 use wezterm_term::{ClickPosition, LastMouseClick, StableRowIndex};
 
+const TAB_DRAG_THRESHOLD: usize = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TabDragAxis {
+    Horizontal,
+    Vertical,
+}
+
+impl TabDragAxis {
+    fn pointer_coord(self, event: &MouseEvent) -> isize {
+        match self {
+            Self::Horizontal => event.coords.x,
+            Self::Vertical => event.coords.y,
+        }
+    }
+
+    fn midpoint(self, target: TabHitTarget) -> usize {
+        match self {
+            Self::Horizontal => target.x + target.width / 2,
+            Self::Vertical => target.y + target.height / 2,
+        }
+    }
+
+    fn sort_key(self, target: &TabHitTarget) -> usize {
+        match self {
+            Self::Horizontal => target.x,
+            Self::Vertical => target.y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TabHitTarget {
+    tab_id: super::TabId,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+}
+
+fn has_tab_drag_started(start_event: &MouseEvent, event: &MouseEvent) -> bool {
+    start_event.coords.x.abs_diff(event.coords.x) >= TAB_DRAG_THRESHOLD
+        || start_event.coords.y.abs_diff(event.coords.y) >= TAB_DRAG_THRESHOLD
+}
+
+fn compute_target_tab_idx(
+    tab_targets: &[TabHitTarget],
+    dragged_tab_id: super::TabId,
+    axis: TabDragAxis,
+    pointer: isize,
+) -> usize {
+    let pointer = pointer.max(0) as usize;
+
+    tab_targets
+        .iter()
+        .filter(|target| target.tab_id != dragged_tab_id)
+        .filter(|target| pointer >= axis.midpoint(**target))
+        .count()
+}
+
 impl super::TermWindow {
+    fn tab_drag_axis(&self) -> TabDragAxis {
+        if self.config.resolved_tab_bar_position().is_vertical() {
+            TabDragAxis::Vertical
+        } else {
+            TabDragAxis::Horizontal
+        }
+    }
+
     fn resolve_ui_item(&self, event: &MouseEvent) -> Option<UIItem> {
         let x = event.coords.x;
         let y = event.coords.y;
@@ -47,6 +115,61 @@ impl super::TermWindow {
             | UIItemType::ScrollThumb
             | UIItemType::Split(_) => {}
         }
+    }
+
+    fn current_tab_hit_targets(&mut self) -> Vec<TabHitTarget> {
+        let items = if self.config.effective_use_fancy_tab_bar() {
+            if self.fancy_tab_bar.is_none() {
+                let palette = self.palette().clone();
+                match self.build_fancy_tab_bar(&palette) {
+                    Ok(tab_bar) => {
+                        self.fancy_tab_bar.replace(tab_bar);
+                    }
+                    Err(err) => {
+                        log::warn!("while building fancy tab bar for drag: {err:#}");
+                    }
+                };
+            }
+
+            self.fancy_tab_bar
+                .as_ref()
+                .map(|computed| computed.ui_items())
+                .unwrap_or_else(|| self.ui_items.clone())
+        } else {
+            let border = self.get_os_border();
+            let tab_bar_height = self.tab_bar_pixel_height().unwrap_or(0.);
+            let tab_bar_y = if self.config.resolved_tab_bar_position().is_bottom() {
+                ((self.dimensions.pixel_height as f32)
+                    - (tab_bar_height + border.bottom.get() as f32))
+                    .max(0.)
+            } else {
+                border.top.get() as f32
+            };
+
+            self.tab_bar.compute_ui_items(
+                tab_bar_y as usize,
+                self.render_metrics.cell_size.height as usize,
+                self.render_metrics.cell_size.width as usize,
+            )
+        };
+
+        let axis = self.tab_drag_axis();
+        let mut targets: Vec<_> = items
+            .into_iter()
+            .filter_map(|item| match item.item_type {
+                UIItemType::TabBar(TabBarItem::Tab { tab_id, .. }) => Some(TabHitTarget {
+                    tab_id,
+                    x: item.x,
+                    y: item.y,
+                    width: item.width,
+                    height: item.height,
+                }),
+                _ => None,
+            })
+            .collect();
+
+        targets.sort_by_key(|target| axis.sort_key(target));
+        targets
     }
 
     fn enter_ui_item(&mut self, item: &UIItem) {
@@ -129,6 +252,10 @@ impl super::TermWindow {
                     // Completed a window drag
                     return;
                 }
+                if press == &MousePress::Left && self.tab_drag.take().is_some() {
+                    // Completed a tab drag (or click-hold on a tab)
+                    return;
+                }
                 if press == &MousePress::Left && self.dragging.take().is_some() {
                     // Completed a drag
                     return;
@@ -158,6 +285,11 @@ impl super::TermWindow {
             }
 
             WMEK::Move => {
+                if let Some(tab_drag) = self.tab_drag.take() {
+                    self.drag_tab(tab_drag, event, context);
+                    return;
+                }
+
                 if let Some(start) = self.window_drag_position.as_ref() {
                     // Dragging the window
                     // Compute the distance since the initial event
@@ -194,7 +326,7 @@ impl super::TermWindow {
 
             match (self.last_ui_item.take(), &ui_item) {
                 (Some(prior), Some(item)) => {
-                    if prior != *item || !self.config.use_fancy_tab_bar {
+                    if prior != *item || !self.config.effective_use_fancy_tab_bar() {
                         self.leave_ui_item(&prior);
                         self.enter_ui_item(item);
                         context.invalidate();
@@ -246,6 +378,7 @@ impl super::TermWindow {
 
     pub fn mouse_leave_impl(&mut self, context: &dyn WindowOps) {
         self.current_mouse_event = None;
+        self.tab_drag = None;
         self.update_title();
         context.set_cursor(Some(MouseCursor::Arrow));
         context.invalidate();
@@ -403,6 +536,40 @@ impl super::TermWindow {
         }
     }
 
+    fn drag_tab(
+        &mut self,
+        mut tab_drag: super::TabDragState,
+        event: MouseEvent,
+        context: &dyn WindowOps,
+    ) {
+        if !tab_drag.started {
+            tab_drag.started = has_tab_drag_started(&tab_drag.start_event, &event);
+        }
+
+        if tab_drag.started {
+            let axis = self.tab_drag_axis();
+            let tab_targets = self.current_tab_hit_targets();
+            let target_idx = compute_target_tab_idx(
+                &tab_targets,
+                tab_drag.tab_id,
+                axis,
+                axis.pointer_coord(&event),
+            );
+
+            if let Err(err) = self.move_tab_by_id(tab_drag.tab_id, target_idx) {
+                log::error!("while dragging tab {}: {err:#}", tab_drag.tab_id);
+                return;
+            }
+
+            // Recompute the fancy tab bar layout from the new mux order before
+            // the next drag sample so vertical hit targets stay in sync.
+            self.invalidate_fancy_tab_bar();
+            context.invalidate();
+        }
+
+        self.tab_drag.replace(tab_drag);
+    }
+
     fn mouse_event_tab_bar_resize_handle(
         &mut self,
         item: UIItem,
@@ -525,8 +692,15 @@ impl super::TermWindow {
     ) {
         match event.kind {
             WMEK::Press(MousePress::Left) => match item {
-                TabBarItem::Tab { tab_idx, .. } => {
+                TabBarItem::Tab {
+                    tab_id, tab_idx, ..
+                } => {
                     self.activate_tab(tab_idx as isize).ok();
+                    self.tab_drag.replace(super::TabDragState {
+                        tab_id,
+                        start_event: event,
+                        started: false,
+                    });
                 }
                 TabBarItem::NewTabButton { .. } => {
                     self.do_new_tab_button_click(MousePress::Left);
@@ -1113,5 +1287,120 @@ fn mouse_press_to_tmb(press: &MousePress) -> TMB {
         MousePress::Left => TMB::Left,
         MousePress::Right => TMB::Right,
         MousePress::Middle => TMB::Middle,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ::window::{Modifiers, ScreenPoint};
+    use euclid::point2;
+
+    fn mouse_event_at(x: isize, y: isize) -> MouseEvent {
+        MouseEvent {
+            kind: WMEK::Move,
+            coords: point2(x, y),
+            screen_coords: ScreenPoint::new(x, y),
+            mouse_buttons: WMB::NONE,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn drag_threshold_requires_meaningful_motion() {
+        let start = mouse_event_at(10, 10);
+
+        assert!(!has_tab_drag_started(&start, &mouse_event_at(13, 10)));
+        assert!(!has_tab_drag_started(&start, &mouse_event_at(10, 13)));
+        assert!(has_tab_drag_started(&start, &mouse_event_at(14, 10)));
+        assert!(has_tab_drag_started(&start, &mouse_event_at(10, 14)));
+    }
+
+    #[test]
+    fn horizontal_target_index_counts_other_tab_midpoints() {
+        let targets = vec![
+            TabHitTarget {
+                tab_id: 10,
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 32,
+            },
+            TabHitTarget {
+                tab_id: 11,
+                x: 100,
+                y: 0,
+                width: 100,
+                height: 32,
+            },
+            TabHitTarget {
+                tab_id: 12,
+                x: 200,
+                y: 0,
+                width: 100,
+                height: 32,
+            },
+        ];
+
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Horizontal, -20),
+            0
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Horizontal, 149),
+            0
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Horizontal, 150),
+            1
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Horizontal, 250),
+            2
+        );
+    }
+
+    #[test]
+    fn vertical_target_index_counts_other_tab_midpoints() {
+        let targets = vec![
+            TabHitTarget {
+                tab_id: 10,
+                x: 0,
+                y: 0,
+                width: 220,
+                height: 80,
+            },
+            TabHitTarget {
+                tab_id: 11,
+                x: 0,
+                y: 80,
+                width: 220,
+                height: 80,
+            },
+            TabHitTarget {
+                tab_id: 12,
+                x: 0,
+                y: 160,
+                width: 220,
+                height: 80,
+            },
+        ];
+
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Vertical, -20),
+            0
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Vertical, 119),
+            0
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Vertical, 120),
+            1
+        );
+        assert_eq!(
+            compute_target_tab_idx(&targets, 10, TabDragAxis::Vertical, 220),
+            2
+        );
     }
 }

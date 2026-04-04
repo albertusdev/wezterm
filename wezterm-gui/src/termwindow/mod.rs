@@ -183,6 +183,13 @@ impl UIItem {
     }
 }
 
+#[derive(Clone, Debug)]
+struct TabDragState {
+    tab_id: TabId,
+    start_event: MouseEvent,
+    started: bool,
+}
+
 #[derive(Clone, Default)]
 pub struct SemanticZoneCache {
     seqno: SequenceNo,
@@ -471,6 +478,7 @@ pub struct TermWindow {
 
     ui_items: Vec<UIItem>,
     dragging: Option<(UIItem, MouseEvent)>,
+    tab_drag: Option<TabDragState>,
 
     modal: RefCell<Option<Rc<dyn Modal>>>,
 
@@ -825,6 +833,7 @@ impl TermWindow {
             semantic_zones: HashMap::new(),
             ui_items: vec![],
             dragging: None,
+            tab_drag: None,
             last_ui_item: None,
             is_click_to_focus_window: false,
             key_table_state: KeyTableState::default(),
@@ -1328,6 +1337,7 @@ impl TermWindow {
                     self.mux_pane_output_event(pane_id);
                 }
                 MuxNotification::WindowInvalidated(_) => {
+                    self.invalidate_fancy_tab_bar();
                     window.invalidate();
                     self.update_title_post_status();
                 }
@@ -2321,11 +2331,42 @@ impl TermWindow {
 
         ensure!(tab_idx < max, "cannot move a tab out of range");
 
-        let tab_inst = window.remove_by_idx(active);
-        window.insert(tab_idx, &tab_inst);
-        window.set_active_without_saving(tab_idx);
+        if active == tab_idx {
+            return Ok(());
+        }
+
+        window.move_by_idx(active, tab_idx);
 
         drop(window);
+        self.invalidate_fancy_tab_bar();
+        self.update_title();
+        self.update_scrollbar();
+
+        Ok(())
+    }
+
+    fn move_tab_by_id(&mut self, tab_id: TabId, tab_idx: usize) -> anyhow::Result<()> {
+        let mux = Mux::get();
+        let mut window = mux
+            .get_window_mut(self.mux_window_id)
+            .ok_or_else(|| anyhow!("no such window"))?;
+
+        let max = window.len();
+        ensure!(max > 0, "no more tabs");
+        ensure!(tab_idx < max, "cannot move a tab out of range");
+
+        let current_idx = window
+            .idx_by_id(tab_id)
+            .ok_or_else(|| anyhow!("no such tab"))?;
+
+        if current_idx == tab_idx {
+            return Ok(());
+        }
+
+        window.move_by_idx(current_idx, tab_idx);
+
+        drop(window);
+        self.invalidate_fancy_tab_bar();
         self.update_title();
         self.update_scrollbar();
 

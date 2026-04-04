@@ -13,6 +13,14 @@ lazy_static::lazy_static! {
                                 .unwrap().as_secs();
 }
 
+fn now_utc() -> DateTime<Utc> {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("system time after unix epoch");
+    DateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos())
+        .expect("valid unix timestamp")
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ClientId {
     pub hostname: String,
@@ -58,15 +66,15 @@ impl ClientInfo {
     pub fn new(client_id: Arc<ClientId>) -> Self {
         Self {
             client_id,
-            connected_at: Utc::now(),
+            connected_at: now_utc(),
             active_workspace: None,
-            last_input: Utc::now(),
+            last_input: now_utc(),
             focused_pane_id: None,
         }
     }
 
     pub fn update_last_input(&mut self) {
-        self.last_input = Utc::now();
+        self.last_input = now_utc();
     }
 
     pub fn update_focused_pane(&mut self, pane_id: PaneId) {

@@ -2,6 +2,7 @@ use crate::termwindow::{PaneInformation, TabInformation, UIItem, UIItemType};
 use config::{ConfigHandle, TabBarColors, TabBarPosition};
 use finl_unicode::grapheme_clusters::Graphemes;
 use mlua::FromLua;
+use mux::tab::TabId;
 use termwiz::cell::{unicode_column_width, Cell, CellAttributes};
 use termwiz::color::{AnsiColor, ColorSpec};
 use termwiz::escape::csi::Sgr;
@@ -23,7 +24,11 @@ pub enum TabBarItem {
     None,
     LeftStatus,
     RightStatus,
-    Tab { tab_idx: usize, active: bool },
+    Tab {
+        tab_id: TabId,
+        tab_idx: usize,
+        active: bool,
+    },
     NewTabButton,
     WindowButton(IntegratedTitleButton),
 }
@@ -513,7 +518,11 @@ impl TabBarState {
             let width = tab_line.len();
 
             items.push(TabEntry {
-                item: TabBarItem::Tab { tab_idx, active },
+                item: TabBarItem::Tab {
+                    tab_id: tab_info[tab_idx].tab_id,
+                    tab_idx,
+                    active,
+                },
                 title,
                 x: tab_start_idx,
                 width,

@@ -72,8 +72,7 @@ impl Window {
     }
 
     fn invalidate(&self) {
-        let mux = Mux::get();
-        mux.notify(MuxNotification::WindowInvalidated(self.id));
+        Mux::try_get().map(|mux| mux.notify(MuxNotification::WindowInvalidated(self.id)));
     }
 
     pub fn insert(&mut self, index: usize, tab: &Arc<Tab>) {
@@ -140,6 +139,27 @@ impl Window {
         self.invalidate();
         let active = self.get_active().map(Arc::clone);
         self.do_remove_idx(idx, active)
+    }
+
+    pub fn move_by_idx(&mut self, idx: usize, dest_idx: usize) {
+        assert!(idx < self.tabs.len());
+        assert!(dest_idx < self.tabs.len());
+
+        if idx == dest_idx {
+            return;
+        }
+
+        let active_tab_id = self.get_active().map(|tab| tab.tab_id());
+        let tab = self.tabs.remove(idx);
+        self.tabs.insert(dest_idx, tab);
+
+        if let Some(active_tab_id) = active_tab_id {
+            if let Some(active_idx) = self.idx_by_id(active_tab_id) {
+                self.active = active_idx;
+            }
+        }
+
+        self.invalidate();
     }
 
     pub fn remove_by_id(&mut self, id: TabId) {
@@ -264,5 +284,84 @@ impl Window {
         if invalidated {
             self.invalidate();
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::Mux;
+    use std::sync::Mutex;
+    use wezterm_term::TerminalSize;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn make_tab() -> Arc<Tab> {
+        Arc::new(Tab::new(&TerminalSize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+            dpi: 0,
+        }))
+    }
+
+    fn with_mux<T>(func: impl FnOnce() -> T) -> T {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let mux = Arc::new(Mux::new(None));
+        Mux::set_mux(&mux);
+        let result = func();
+        Mux::shutdown();
+        result
+    }
+
+    #[test]
+    fn move_active_tab_tracks_its_new_index() {
+        with_mux(|| {
+            let mut window = Window::new(None, None);
+            let tab0 = make_tab();
+            let tab1 = make_tab();
+            let tab2 = make_tab();
+
+            window.push(&tab0);
+            window.push(&tab1);
+            window.push(&tab2);
+            window.set_active_without_saving(0);
+
+            window.move_by_idx(0, 2);
+
+            assert_eq!(window.get_active_idx(), 2);
+            assert_eq!(
+                window.iter().map(|tab| tab.tab_id()).collect::<Vec<_>>(),
+                vec![tab1.tab_id(), tab2.tab_id(), tab0.tab_id()]
+            );
+        });
+    }
+
+    #[test]
+    fn move_inactive_tab_preserves_active_tab_identity() {
+        with_mux(|| {
+            let mut window = Window::new(None, None);
+            let tab0 = make_tab();
+            let tab1 = make_tab();
+            let tab2 = make_tab();
+
+            window.push(&tab0);
+            window.push(&tab1);
+            window.push(&tab2);
+            window.set_active_without_saving(1);
+
+            window.move_by_idx(0, 2);
+
+            assert_eq!(window.get_active_idx(), 0);
+            assert_eq!(
+                window.get_active().map(|tab| tab.tab_id()),
+                Some(tab1.tab_id())
+            );
+            assert_eq!(
+                window.iter().map(|tab| tab.tab_id()).collect::<Vec<_>>(),
+                vec![tab1.tab_id(), tab2.tab_id(), tab0.tab_id()]
+            );
+        });
     }
 }
