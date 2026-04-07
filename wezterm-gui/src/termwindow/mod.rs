@@ -1362,6 +1362,18 @@ impl TermWindow {
                     self.mux_pane_output_event(pane_id);
                 }
                 MuxNotification::WindowInvalidated(_) => {
+                    // Check if panel state changed and trigger re-layout
+                    let mux_has_panel = {
+                        let mux = Mux::get();
+                        mux.get_window(self.mux_window_id)
+                            .map(|w| w.has_panel())
+                            .unwrap_or(false)
+                    };
+                    let tw_has_panel = self.panel_pixel_width > 0.0;
+                    if mux_has_panel != tw_has_panel {
+                        let dims = self.dimensions;
+                        self.apply_dimensions(&dims, None, window);
+                    }
                     self.invalidate_fancy_tab_bar();
                     window.invalidate();
                     self.update_title_post_status();
