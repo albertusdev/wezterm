@@ -503,6 +503,11 @@ pub struct TermWindow {
     gl: Option<Rc<glium::backend::Context>>,
     webgpu: Option<Rc<WebGpuState>>,
     config_subscription: Option<config::ConfigSubscription>,
+
+    /// Cached pixel width of the panel area (0.0 when no panel is active).
+    /// Updated in apply_dimensions().
+    panel_pixel_width: f32,
+    panel_focused: bool,
 }
 
 impl TermWindow {
@@ -515,6 +520,23 @@ impl TermWindow {
                     None
                 }
             };
+        }
+    }
+
+    pub fn get_panel_pixel_width(&self) -> f32 {
+        self.panel_pixel_width
+    }
+
+    pub fn toggle_panel_focus(&mut self) {
+        let mux = Mux::get();
+        let has_panel = mux
+            .get_window(self.mux_window_id)
+            .map(|w| w.has_panel())
+            .unwrap_or(false);
+        if has_panel {
+            self.panel_focused = !self.panel_focused;
+        } else {
+            self.panel_focused = false;
         }
     }
 
@@ -840,6 +862,8 @@ impl TermWindow {
             key_table_state: KeyTableState::default(),
             modal: RefCell::new(None),
             opengl_info: None,
+            panel_pixel_width: 0.0,
+            panel_focused: false,
         };
 
         let tw = Rc::new(RefCell::new(myself));
@@ -3578,6 +3602,18 @@ impl TermWindow {
     /// an active overlay (such as search or copy mode) then that will
     /// be returned.
     pub fn get_active_pane_or_overlay(&self) -> Option<Arc<dyn Pane>> {
+        // If the panel is focused, route input to the panel pane
+        if self.panel_focused {
+            let panel_pane = {
+                let mux = Mux::get();
+                mux.get_window(self.mux_window_id)
+                    .and_then(|w| w.get_panel_tab().and_then(|t| t.get_active_pane()))
+            };
+            if let Some(pane) = panel_pane {
+                return Some(pane);
+            }
+        }
+
         let mux = Mux::get();
         let tab = match mux.get_active_tab_for_window(self.mux_window_id) {
             Some(tab) => tab,
@@ -3733,6 +3769,27 @@ impl TermWindow {
         };
 
         self.get_pos_panes_for_tab(&tab)
+    }
+
+    pub fn get_panel_positioned_pane(&self) -> Option<PositionedPane> {
+        let mux = Mux::get();
+        let window = mux.get_window(self.mux_window_id)?;
+        let panel_tab = window.get_panel_tab()?;
+        let panel_pane = panel_tab.get_active_pane()?;
+        let panel_size = panel_tab.get_size();
+        let content_cols = self.terminal_size.cols;
+        Some(PositionedPane {
+            index: 0,
+            is_active: self.panel_focused,
+            is_zoomed: false,
+            left: content_cols,
+            top: 0,
+            width: panel_size.cols as usize,
+            height: panel_size.rows as usize,
+            pixel_width: panel_size.pixel_width,
+            pixel_height: panel_size.pixel_height,
+            pane: panel_pane,
+        })
     }
 
     fn find_tab_overlay_ids(&self, overlay_id: &str) -> Vec<TabId> {

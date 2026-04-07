@@ -273,6 +273,81 @@ struct SpawnTab {
 }
 impl_lua_conversion_dynamic!(SpawnTab);
 
+#[derive(Debug, FromDynamic, ToDynamic)]
+struct SpawnPanel {
+    #[dynamic(default)]
+    domain: SpawnTabDomain,
+    #[dynamic(flatten)]
+    cmd_builder: CommandBuilderFrag,
+    #[dynamic(default = "default_panel_size")]
+    size: f32,
+}
+impl_lua_conversion_dynamic!(SpawnPanel);
+
+fn default_panel_size() -> f32 {
+    0.5
+}
+
+impl SpawnPanel {
+    async fn spawn(self, window: &MuxWindow) -> mlua::Result<MuxPane> {
+        let mux = get_mux()?;
+        let size;
+        let pane_id;
+
+        {
+            let win = window.resolve(&mux)?;
+            size = win
+                .get_by_idx(0)
+                .map(|tab| tab.get_size())
+                .unwrap_or_else(|| config::configuration().initial_size(0, None));
+            pane_id = win
+                .get_active()
+                .and_then(|tab| tab.get_active_pane().map(|pane| pane.pane_id()));
+        };
+
+        let domain = mux
+            .resolve_spawn_tab_domain(pane_id, &self.domain)
+            .map_err(|e| mlua::Error::external(format!("{:#?}", e)))?;
+
+        // Compute panel terminal size from fraction
+        let panel_frac = self.size.clamp(0.1, 0.9);
+        let panel_cols = ((size.cols as f32) * panel_frac / (1.0 - panel_frac)).floor() as usize;
+        let cell_w = if size.cols > 0 {
+            size.pixel_width / size.cols
+        } else {
+            8
+        };
+        let panel_size = wezterm_term::TerminalSize {
+            rows: size.rows,
+            cols: panel_cols.max(10),
+            pixel_width: panel_cols.max(10) * cell_w,
+            pixel_height: size.pixel_height,
+            dpi: size.dpi,
+        };
+
+        let (cmd_builder, cwd) = self.cmd_builder.to_command_builder();
+
+        let pane = domain
+            .spawn_pane(panel_size, cmd_builder, cwd)
+            .await
+            .map_err(|e| mlua::Error::external(format!("{:#?}", e)))?;
+
+        let tab = std::sync::Arc::new(mux::tab::Tab::new(&panel_size));
+        tab.assign_pane(&pane);
+
+        mux.add_tab_and_active_pane(&tab)
+            .map_err(|e| mlua::Error::external(format!("{:#?}", e)))?;
+
+        {
+            let mut win = window.resolve_mut(&mux)?;
+            win.set_panel_size(panel_frac);
+            win.set_panel_tab(Some(tab));
+        }
+
+        Ok(MuxPane(pane.pane_id()))
+    }
+}
+
 impl SpawnTab {
     async fn spawn(self, window: &MuxWindow) -> mlua::Result<(MuxTab, MuxPane, MuxWindow)> {
         let mux = get_mux()?;

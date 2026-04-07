@@ -105,5 +105,47 @@ impl UserData for MuxWindow {
                 .get_active()
                 .and_then(|tab| tab.get_active_pane().map(|pane| MuxPane(pane.pane_id()))))
         });
+
+        methods.add_async_method("spawn_panel", |_, this, spawn: SpawnPanel| async move {
+            spawn.spawn(&this).await
+        });
+
+        methods.add_method("close_panel", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let mut window = this.resolve_mut(&mux)?;
+            window.close_panel();
+            Ok(())
+        });
+
+        methods.add_async_method("toggle_panel", |_, this, spawn: SpawnPanel| async move {
+            let has_panel = {
+                let mux = get_mux()?;
+                let window = this.resolve(&mux)?;
+                window.has_panel()
+            };
+            if has_panel {
+                let mux = get_mux()?;
+                let mut window = this.resolve_mut(&mux)?;
+                window.close_panel();
+                Ok(None)
+            } else {
+                let pane = spawn.spawn(&this).await?;
+                Ok(Some(pane))
+            }
+        });
+
+        methods.add_method("get_panel_pane", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let window = this.resolve(&mux)?;
+            Ok(window
+                .get_panel_tab()
+                .and_then(|tab| tab.get_active_pane().map(|pane| MuxPane(pane.pane_id()))))
+        });
+
+        methods.add_method("has_panel", |_, this, _: ()| {
+            let mux = get_mux()?;
+            let window = this.resolve(&mux)?;
+            Ok(window.has_panel())
+        });
     }
 }

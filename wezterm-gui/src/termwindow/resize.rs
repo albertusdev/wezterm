@@ -178,7 +178,7 @@ impl super::TermWindow {
 
         let border = self.get_os_border();
 
-        let (size, dims, ri_calc) = if let Some(cell_dims) = scale_changed_cells {
+        let (size, dims, ri_calc, computed_panel_pw) = if let Some(cell_dims) = scale_changed_cells {
             // Scaling preserves existing terminal dimensions, yielding a new
             // overall set of window dimensions
             let size = TerminalSize {
@@ -236,7 +236,7 @@ impl super::TermWindow {
                 tab_bar_width: tab_bar_width as usize,
             };
 
-            (size, dims, ri_calc)
+            (size, dims, ri_calc, self.panel_pixel_width)
         } else {
             // Resize of the window dimensions may result in changed terminal dimensions
 
@@ -256,7 +256,7 @@ impl super::TermWindow {
                 config.window_padding.bottom.evaluate_as_pixels(v_context) as usize;
             let padding_right = effective_right_padding(&config, h_context);
 
-            let avail_width = dimensions.pixel_width.saturating_sub(
+            let total_avail_width = dimensions.pixel_width.saturating_sub(
                 tab_bar_width as usize
                     + (padding_left + padding_right) as usize
                     + (border.left + border.right).get() as usize,
@@ -269,8 +269,28 @@ impl super::TermWindow {
                 )
                 .saturating_sub(tab_bar_height as usize);
 
+            // Compute panel width if a panel tab is active
+            let cell_w = self.render_metrics.cell_size.width as usize;
+            let panel_pixel_width = {
+                let mux = Mux::get();
+                let ppw = if let Some(window) = mux.get_window(self.mux_window_id) {
+                    if window.has_panel() && cell_w > 0 {
+                        let frac = window.panel_size();
+                        let panel_cols =
+                            ((total_avail_width as f32 * frac) / cell_w as f32).floor() as usize;
+                        panel_cols * cell_w
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                ppw
+            };
+            let avail_width = total_avail_width.saturating_sub(panel_pixel_width);
+
             let rows = avail_height / self.render_metrics.cell_size.height as usize;
-            let cols = avail_width / self.render_metrics.cell_size.width as usize;
+            let cols = avail_width / cell_w;
 
             let size = TerminalSize {
                 rows,
@@ -296,17 +316,36 @@ impl super::TermWindow {
                 tab_bar_width: tab_bar_width as usize,
             };
 
-            (size, *dimensions, ri_calc)
+            (size, *dimensions, ri_calc, panel_pixel_width as f32)
         };
 
         log::trace!("apply_dimensions computed size {:?}, dims {:?}", size, dims);
 
         self.terminal_size = size;
+        self.panel_pixel_width = computed_panel_pw;
 
         let mux = Mux::get();
         if let Some(window) = mux.get_window(self.mux_window_id) {
             for tab in window.iter() {
                 tab.resize(size);
+            }
+
+            // Resize panel tab if active
+            let cell_w = self.render_metrics.cell_size.width as usize;
+            if let Some(panel_tab) = window.get_panel_tab() {
+                if cell_w > 0 && self.panel_pixel_width > 0.0 {
+                    let panel_cols = self.panel_pixel_width as usize / cell_w;
+                    let panel_size = TerminalSize {
+                        rows: size.rows,
+                        cols: panel_cols,
+                        pixel_width: panel_cols * cell_w,
+                        pixel_height: size.pixel_height,
+                        dpi: size.dpi,
+                    };
+                    panel_tab.resize(panel_size);
+                }
+            } else {
+                self.panel_pixel_width = 0.0;
             }
         };
         self.resize_overlays();

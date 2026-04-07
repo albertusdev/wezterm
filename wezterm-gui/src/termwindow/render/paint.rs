@@ -265,6 +265,14 @@ impl crate::TermWindow {
             }
         }
 
+        // Render the panel pane if active
+        if self.panel_pixel_width > 0.0 {
+            if let Some(panel_pos) = self.get_panel_positioned_pane() {
+                self.paint_pane(&panel_pos, &mut layers)
+                    .context("paint_panel_pane")?;
+            }
+        }
+
         if self.show_tab_bar {
             self.paint_tab_bar(&mut layers).context("paint_tab_bar")?;
         }

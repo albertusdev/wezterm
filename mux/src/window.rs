@@ -14,6 +14,8 @@ pub struct Window {
     workspace: String,
     title: String,
     initial_position: Option<GuiPosition>,
+    panel_tab: Option<Arc<Tab>>,
+    panel_size: f32,
 }
 
 impl Window {
@@ -26,6 +28,8 @@ impl Window {
             title: String::new(),
             workspace: workspace.unwrap_or_else(|| Mux::get().active_workspace()),
             initial_position,
+            panel_tab: None,
+            panel_size: 0.5,
         }
     }
 
@@ -238,6 +242,33 @@ impl Window {
         self.tabs.iter()
     }
 
+    pub fn set_panel_tab(&mut self, tab: Option<Arc<Tab>>) {
+        self.panel_tab = tab;
+        self.invalidate();
+    }
+
+    pub fn get_panel_tab(&self) -> Option<&Arc<Tab>> {
+        self.panel_tab.as_ref()
+    }
+
+    pub fn has_panel(&self) -> bool {
+        self.panel_tab.is_some()
+    }
+
+    pub fn close_panel(&mut self) {
+        self.panel_tab = None;
+        self.invalidate();
+    }
+
+    pub fn set_panel_size(&mut self, size: f32) {
+        self.panel_size = size.clamp(0.1, 0.9);
+        self.invalidate();
+    }
+
+    pub fn panel_size(&self) -> f32 {
+        self.panel_size
+    }
+
     pub fn prune_dead_tabs(&mut self, live_tab_ids: &[TabId]) {
         let mut invalidated = false;
         let dead: Vec<TabId> = self
@@ -279,6 +310,14 @@ impl Window {
         for tab_id in dead {
             log::trace!("Window::prune_dead_tabs: (live) tab_id {} is dead", tab_id);
             self.remove_by_id(tab_id);
+        }
+
+        if let Some(ref panel) = self.panel_tab {
+            if panel.is_dead() {
+                log::trace!("Window::prune_dead_tabs: panel tab is dead");
+                self.panel_tab = None;
+                invalidated = true;
+            }
         }
 
         if invalidated {

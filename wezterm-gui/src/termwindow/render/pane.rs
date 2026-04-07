@@ -127,9 +127,16 @@ impl crate::TermWindow {
             euclid::rect(
                 x,
                 y,
-                // Go all the way to the right edge if we're right-most
+                // Go all the way to the right edge if we're right-most.
+                // If a panel is active, tab panes stop at the panel boundary.
                 if pos.left + pos.width >= self.terminal_size.cols as usize {
-                    self.dimensions.pixel_width as f32 - x
+                    let right_edge = self.dimensions.pixel_width as f32
+                        - if pos.left < self.terminal_size.cols as usize {
+                            self.get_panel_pixel_width()
+                        } else {
+                            0.0
+                        };
+                    right_edge - x
                 } else {
                     (pos.width as f32 * cell_width) + width_delta
                 },
@@ -617,7 +624,13 @@ impl crate::TermWindow {
             y,
             // Go all the way to the right edge if we're right-most
             if pos.left + pos.width >= self.terminal_size.cols as usize {
-                self.dimensions.pixel_width as f32 - x
+                let right_edge = self.dimensions.pixel_width as f32
+                    - if pos.left < self.terminal_size.cols as usize {
+                        self.get_panel_pixel_width()
+                    } else {
+                        0.0
+                    };
+                right_edge - x
             } else {
                 (pos.width as f32 * cell_width) + width_delta
             },

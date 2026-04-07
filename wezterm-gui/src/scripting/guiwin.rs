@@ -335,5 +335,13 @@ impl UserData for GuiWin {
                 Ok(result)
             },
         );
+
+        methods.add_method("toggle_panel_focus", |_, this, _: ()| {
+            this.window
+                .notify(TermWindowNotif::Apply(Box::new(|tw| {
+                    tw.toggle_panel_focus();
+                })));
+            Ok(())
+        });
     }
 }
