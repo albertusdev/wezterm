@@ -267,9 +267,9 @@ impl super::TermWindow {
                             context.invalidate();
                         }
                         context.set_cursor(Some(MouseCursor::OpenHand));
+                        // Completed a tab drag (or click-hold on a tab)
+                        return;
                     }
-                    // Completed a tab drag (or click-hold on a tab)
-                    return;
                 }
                 if press == &MousePress::Left && self.dragging.take().is_some() {
                     // Completed a drag
